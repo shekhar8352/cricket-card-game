@@ -1,0 +1,72 @@
+:root {
+  --bg: #f8fafc;
+  --fg: #1e293b;
+  --muted: #475569;
+  --card-bg: #ffffff;
+  --border: #e2e8f0;
+  --accent: #1d4ed8;
+  --accent-bright: #3b82f6;
+  --accent-fg: #ffffff;
+  --cta: #f97316;
+  --cta-fg: #1c1917;
+  --success: #15803d;
+  --runs: #1d4ed8;
+  --boundary: #15803d;
+  --six: #6d28d9;
+  --wicket: #dc2626;
+  --extras: #c2410c;
+  --bronze: #8a6a32;
+  --silver: #4b5563;
+  --gold: #92650a;
+  --legend: #6d28d9;
+  --radius: 12px;
+}
+
+.dark {
+  --bg: #0b1220;
+  --fg: #f8fafc;
+  --muted: #cbd5e1;
+  --card-bg: #111827;
+  --border: #334155;
+  --accent: #93c5fd;
+  --accent-bright: #3b82f6;
+  --accent-fg: #0b1220;
+  --cta: #fb923c;
+  --cta-fg: #1c1917;
+  --success: #4ade80;
+  --runs: #93c5fd;
+  --boundary: #4ade80;
+  --six: #c4b5fd;
+  --wicket: #fca5a5;
+  --extras: #fdba74;
+  --bronze: #e7cba0;
+  --silver: #e5e7eb;
+  --gold: #fcd34d;
+  --legend: #c4b5fd;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-card: var(--card-bg);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-bright: var(--accent-bright);
+  --color-accent-fg: var(--accent-fg);
+  --color-cta: var(--cta);
+  --color-cta-fg: var(--cta-fg);
+  --color-success: var(--success);
+  --color-runs: var(--runs);
+  --color-boundary: var(--boundary);
+  --color-six: var(--six);
+  --color-wicket: var(--wicket);
+  --color-extras: var(--extras);
+  --color-bronze: var(--bronze);
+  --color-silver: var(--silver);
+  --color-gold: var(--gold);
+  --color-legend: var(--legend);
+  --font-sans: Barlow, ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Barlow Condensed", Barlow, ui-sans-serif, sans-serif;
+  --radius-card: 12px;
+}
