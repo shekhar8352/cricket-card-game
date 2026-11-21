@@ -1,11 +1,12 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { FastForward, Flame, Gauge, SkipForward, Sparkles, Target, TrendingDown, TrendingUp, Zap } from 'lucide-react'
+import { FastForward, Flame, Gauge, SkipForward, Sparkles, Swords, Target, TrendingDown, TrendingUp, Zap } from 'lucide-react'
 import { api } from '../api/client'
 import { useMatchPlayback } from '../components/match/useMatchPlayback'
 import { FieldSvg } from '../components/match/FieldSvg'
-import { initials } from '../lib/rules'
+import { PlayerAvatar } from '../components/card/PlayerAvatar'
+import { PlanBadge } from '../components/match/MatchPlan'
 import { Panel } from '../components/ui/chrome'
 import { useUI } from '../store/ui'
 import type { BallEvent, PlayerCard as Card } from '../types/engine'
@@ -59,7 +60,8 @@ export function LiveMatchPage() {
   const name = (cid: string) => cards.get(cid)?.name.split(' ').slice(-1)[0] ?? 'Player'
   const fullName = (cid: string) => cards.get(cid)?.name ?? 'Player'
 
-  const state = useMemo(() => computeLive(shown), [shown])
+  const par = m?.pitch?.par
+  const state = useMemo(() => computeLive(shown, par), [shown, par])
 
   // Who is batting in which innings.
   const yourSide = m?.youAreHome ? 'home' : 'away'
@@ -97,6 +99,16 @@ export function LiveMatchPage() {
   if (!m) return <p className="text-muted">Walking out to the middle…</p>
 
   const overBalls = current ? shown.filter((b) => b.innings === current.innings && b.over === current.over) : []
+  const dotStreak = (() => {
+    let n = 0
+    for (let i = shown.length - 1; i >= 0 && shown[i].innings === current?.innings; i--) {
+      const b = shown[i]
+      if (!b.legal) break
+      if (b.runs !== 0 || b.dismissal) break
+      n++
+    }
+    return n
+  })()
   const legalInOver = overBalls.filter((b) => b.legal).length
   const striker = current ? state.now.batters.get(current.strikerId) : undefined
   const nonStriker = current?.nonStrikerId ? state.now.batters.get(current.nonStrikerId) : undefined
@@ -112,7 +124,7 @@ export function LiveMatchPage() {
             <span className="text-white/30">·</span>
             {inn === 0 ? '1st innings' : 'Chase'}
           </span>
-          <span>{OVERS} overs · {MAX_WICKETS} wickets</span>
+          <span>{m?.pitch ? `${m.pitch.name} pitch · par ${m.pitch.par}` : `${OVERS} overs · ${MAX_WICKETS} wickets`}</span>
         </div>
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 py-3">
           <TeamScore
@@ -188,6 +200,18 @@ export function LiveMatchPage() {
                 </button>
               </div>
             </div>
+            {current && (
+              <div className="flex flex-wrap items-center gap-2 mb-3 text-sm">
+                <PlanBadge kind="bat" value={current.approach} />
+                <PlanBadge kind="field" value={current.field} />
+                {current.counter && (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-cta/15 border border-cta/40 px-2 py-0.5 text-xs font-bold text-cta">
+                    <Swords size={12} aria-hidden /> {current.counter}
+                  </span>
+                )}
+                <PressureMeter dots={dotStreak} />
+              </div>
+            )}
             <div className="flex flex-wrap gap-1.5 mb-3" aria-label="This over">
               {overBalls.map((b, i) => {
                 const c = ballChip(b)
@@ -223,7 +247,7 @@ export function LiveMatchPage() {
           <Panel>
             <h2 className="font-display text-lg font-bold uppercase tracking-wide mb-2">At the crease</h2>
             {!current && <p className="text-muted">Openers are padding up.</p>}
-            {striker && <BatterRow line={striker} card={cards.get(striker.id)} onStrike />}
+            {striker && <BatterRow line={striker} card={cards.get(striker.id)} onStrike matchup={current?.strikerId === striker.id ? current?.matchup : undefined} />}
             {nonStriker && !nonStriker.out && <BatterRow line={nonStriker} card={cards.get(nonStriker.id)} />}
             {bowler && <BowlerRow line={bowler} card={cards.get(bowler.id)} />}
             {state.now.lastWicket && (
@@ -306,13 +330,16 @@ function SpeedBtn({ on, onClick, label, icon }: { on: boolean; onClick: () => vo
   )
 }
 
-function BatterRow({ line, card, onStrike }: { line: BatLine; card?: Card; onStrike?: boolean }) {
+function BatterRow({ line, card, onStrike, matchup }: { line: BatLine; card?: Card; onStrike?: boolean; matchup?: string }) {
   return (
     <div className="flex items-center gap-3 py-2">
-      <Avatar card={card} />
+      <PlayerAvatar name={card?.name} rarity={card?.rarity} />
       <div className="min-w-0 flex-1">
         <p className="font-semibold truncate">
           {card?.name ?? 'Batter'}{onStrike && <span className="text-cta ml-1" aria-label="on strike">*</span>}
+          {matchup && (
+            <span className={cn('ml-2 rounded-md px-1.5 py-0.5 text-[11px] font-bold uppercase', matchup.startsWith('weak') ? 'bg-wicket/15 text-wicket' : 'bg-success/15 text-success')}>{matchup}</span>
+          )}
         </p>
         <p className="text-sm text-muted tabular">
           {line.fours}×4 · {line.sixes}×6 · SR {strikeRate(line.runs, line.balls).toFixed(0)}
@@ -328,7 +355,7 @@ function BatterRow({ line, card, onStrike }: { line: BatLine; card?: Card; onStr
 function BowlerRow({ line, card }: { line: BowlLine; card?: Card }) {
   return (
     <div className="flex items-center gap-3 py-2 mt-1 border-t border-border">
-      <Avatar card={card} />
+      <PlayerAvatar name={card?.name} rarity={card?.rarity} />
       <div className="min-w-0 flex-1">
         <p className="font-semibold truncate">{card?.name ?? 'Bowler'} <span className="text-sm text-muted font-normal">bowling</span></p>
         <p className="text-sm text-muted tabular">Econ {rate(line.runs, line.balls).toFixed(2)} · {line.dots} dots</p>
@@ -397,17 +424,19 @@ function CommentaryRow({ b }: { b: BallEvent }) {
   )
 }
 
-const rarityRing: Record<string, string> = { Bronze: '#e8c99b', Silver: '#e5e7eb', Gold: '#f6c445', Legend: '#c4b5fd' }
 
-function Avatar({ card }: { card?: Card }) {
+function PressureMeter({ dots }: { dots: number }) {
+  const max = 5
+  const level = Math.min(dots, max)
+  const on = dots >= 2
   return (
-    <span
-      className="grid place-items-center w-11 h-11 shrink-0 rounded-full border-2 bg-gradient-to-br from-[#1a2b42] to-[#0d1828] font-display text-base font-bold text-white"
-      style={{ borderColor: card ? rarityRing[card.rarity] : 'var(--border)' }}
-      aria-hidden
-    >
-      {card ? initials(card.name) : '?'}
-      {card && <span className="sr-only">{card.overall}</span>}
+    <span className="inline-flex items-center gap-1.5" role="meter" aria-label={`Pressure: ${dots} dot balls in a row`} aria-valuemin={0} aria-valuemax={max} aria-valuenow={level}>
+      <span className={cn('text-xs font-bold uppercase tracking-wide', on ? 'text-wicket' : 'text-muted')}>Pressure</span>
+      <span className="flex gap-0.5">
+        {Array.from({ length: max }).map((_, i) => (
+          <span key={i} className={cn('w-2.5 h-3 rounded-sm', i < level ? (on ? 'bg-wicket' : 'bg-muted/60') : 'bg-black/10 dark:bg-white/10')} />
+        ))}
+      </span>
     </span>
   )
 }

@@ -1,0 +1,621 @@
+import { useQuery } from '@tanstack/react-query'
+import { useState, type ReactNode } from 'react'
+import { Calculator, Dice5, Eye, Gauge, Layers, ListChecks, Lock, Scale, Shield, Swords, Trophy, Wind } from 'lucide-react'
+import { api } from '../api/client'
+import { Panel } from '../components/ui/chrome'
+import { PitchCard, PlanSegment } from '../components/match/MatchPlan'
+import { cn } from '../lib/cn'
+import { APPROACH, FIELD } from '../lib/strategy'
+import type { Approach, BowlType, EngineModel, FieldPlan, Outcome, Pitch, WeightDelta } from '../types/engine'
+
+const OUTCOMES: { key: Outcome; label: string; color: string }[] = [
+  { key: 'dot', label: 'Dot', color: '#64748b' },
+  { key: 'one', label: '1', color: '#60a5fa' },
+  { key: 'two', label: '2', color: '#3b82f6' },
+  { key: 'three', label: '3', color: '#1d4ed8' },
+  { key: 'four', label: '4', color: '#12b76a' },
+  { key: 'six', label: '6', color: '#8b5cf6' },
+  { key: 'wicket', label: 'Wicket', color: '#dc2626' },
+  { key: 'wide', label: 'Wide', color: '#f59e0b' },
+  { key: 'noball', label: 'No-ball', color: '#fb923c' },
+]
+
+const TOC = [
+  ['overview', 'The short version'],
+  ['flow', 'How a match runs'],
+  ['ball', 'One ball, step by step'],
+  ['strategy', 'Strategy: approach & field'],
+  ['conditions', 'Pitch, matchups, pressure'],
+  ['traits', 'Player traits'],
+  ['calculator', 'Odds calculator'],
+  ['after', 'After the match'],
+  ['fairness', 'Fairness & bots'],
+] as const
+
+export function EnginePage() {
+  const q = useQuery({ queryKey: ['engine-model'], queryFn: api.engineModel, staleTime: Infinity })
+  const m = q.data
+
+  return (
+    <div className="lg:grid lg:grid-cols-[13rem_1fr] gap-8">
+      <nav className="hidden lg:block" aria-label="On this page">
+        <div className="sticky top-24 space-y-1 text-sm">
+          <p className="text-xs font-bold uppercase tracking-wider text-muted mb-2">On this page</p>
+          {TOC.map(([id, label]) => (
+            <a key={id} href={`#${id}`} className="block rounded-lg px-2 py-1.5 text-muted hover:text-fg hover:bg-black/5 dark:hover:bg-white/10">{label}</a>
+          ))}
+        </div>
+      </nav>
+
+      <article className="min-w-0 space-y-12 pb-16">
+        <header className="hero-stadium rounded-3xl px-5 py-8 sm:px-8">
+          <div className="relative z-10 max-w-3xl">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#ffd166]">Fully transparent</p>
+            <h1 className="font-display text-5xl sm:text-6xl font-bold uppercase leading-[0.95] mt-2">How matches are simulated</h1>
+            <p className="text-white/85 text-lg mt-3">
+              Every ball is decided by the same published rules. The tables on this page are loaded live from the match engine, so what you read here is exactly what the game uses.
+            </p>
+          </div>
+        </header>
+
+        {q.isPending && <p className="text-muted">Loading the engine’s numbers…</p>}
+        {q.isError && <p className="text-wicket">Couldn’t load the engine model: {(q.error as Error).message}</p>}
+        {m && (
+          <>
+            <Overview m={m} />
+            <Flow m={m} />
+            <OneBall m={m} />
+            <Strategy m={m} />
+            <Conditions m={m} />
+            <Traits m={m} />
+            <OddsCalculator m={m} />
+            <After m={m} />
+            <Fairness m={m} />
+          </>
+        )}
+      </article>
+    </div>
+  )
+}
+
+/* ---------------------------------------------------------------- helpers */
+
+function Section({ id, icon, title, lede, children }: { id: string; icon: ReactNode; title: string; lede?: string; children: ReactNode }) {
+  return (
+    <section id={id} aria-labelledby={`${id}-h`} className="scroll-mt-24">
+      <h2 id={`${id}-h`} className="flex items-center gap-2.5 font-display text-3xl sm:text-4xl font-bold uppercase">
+        <span className="grid place-items-center w-10 h-10 rounded-xl bg-accent/15 text-accent">{icon}</span>
+        {title}
+      </h2>
+      {lede && <p className="text-muted text-lg mt-2 max-w-3xl">{lede}</p>}
+      <div className="mt-5 space-y-4">{children}</div>
+    </section>
+  )
+}
+
+function Formula({ children }: { children: ReactNode }) {
+  return <code className="block rounded-xl bg-black/5 dark:bg-white/5 border border-border px-4 py-3 font-mono text-sm leading-relaxed overflow-x-auto whitespace-pre">{children}</code>
+}
+
+function Step({ n, title, children }: { n: number; title: string; children: ReactNode }) {
+  return (
+    <div className="flex gap-4">
+      <span className="grid place-items-center w-9 h-9 shrink-0 rounded-full bg-cta text-cta-fg font-display text-lg font-bold">{n}</span>
+      <div className="min-w-0 flex-1 pt-1">
+        <h3 className="font-display text-xl font-bold uppercase tracking-wide">{title}</h3>
+        <div className="mt-1.5 space-y-3 text-[15px] leading-relaxed">{children}</div>
+      </div>
+    </div>
+  )
+}
+
+const DELTA_KEYS: (keyof WeightDelta)[] = ['dot', 'one', 'two', 'four', 'six', 'wicket']
+const DELTA_LABEL: Record<keyof WeightDelta, string> = { dot: 'Dot', one: '1', two: '2', four: '4', six: '6', wicket: 'Wkt' }
+
+function DeltaCells({ d }: { d?: WeightDelta }) {
+  return (
+    <>
+      {DELTA_KEYS.map((k) => {
+        const v = d?.[k] ?? 0
+        return (
+          <td key={k} className={cn('px-2 py-2 text-center tabular font-semibold', v > 0 && (k === 'wicket' || k === 'dot' ? 'text-wicket' : 'text-success'), v < 0 && (k === 'wicket' || k === 'dot' ? 'text-success' : 'text-wicket'), v === 0 && 'text-muted/60')}>
+            {v > 0 ? `+${v}` : v === 0 ? '·' : v}
+          </td>
+        )
+      })}
+    </>
+  )
+}
+
+/** Labeled, non-zero weight changes, e.g. "Wicket +4". Good for/bad for the batter is colour coded. */
+function DeltaChips({ d }: { d: WeightDelta }) {
+  const items = DELTA_KEYS.filter((k) => d[k])
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-2">
+      {items.map((k) => {
+        const v = d[k]
+        const goodForBatter = k === 'wicket' || k === 'dot' ? v < 0 : v > 0
+        return (
+          <span key={k} className={cn('rounded-md px-2 py-0.5 text-xs font-bold tabular', goodForBatter ? 'bg-success/15 text-success' : 'bg-wicket/15 text-wicket')}>
+            {k === 'wicket' ? 'Wicket' : k === 'dot' ? 'Dot' : `${DELTA_LABEL[k]}s`} {v > 0 ? `+${v}` : v}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
+function DeltaHead({ first }: { first: string }) {
+  return (
+    <thead>
+      <tr className="text-xs uppercase tracking-wider text-muted">
+        <th scope="col" className="px-3 py-2 text-left">{first}</th>
+        {DELTA_KEYS.map((k) => <th key={k} scope="col" className="px-2 py-2 text-center">{DELTA_LABEL[k]}</th>)}
+      </tr>
+    </thead>
+  )
+}
+
+function Table({ children, caption }: { children: ReactNode; caption: string }) {
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-border glass">
+      <table className="w-full text-sm">
+        <caption className="sr-only">{caption}</caption>
+        {children}
+      </table>
+    </div>
+  )
+}
+
+function OddsBar({ odds }: { odds: Record<Outcome, number> }) {
+  return (
+    <div>
+      <div className="flex h-8 rounded-lg overflow-hidden" role="img" aria-label={OUTCOMES.map((o) => `${o.label} ${(odds[o.key] * 100).toFixed(1)}%`).join(', ')}>
+        {OUTCOMES.map((o) => odds[o.key] > 0 && (
+          <div key={o.key} className="h-full grid place-items-center text-[11px] font-bold text-white transition-[width] duration-500" style={{ width: `${odds[o.key] * 100}%`, background: o.color }}>
+            {odds[o.key] >= 0.06 ? o.label : ''}
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs">
+        {OUTCOMES.map((o) => (
+          <span key={o.key} className="inline-flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm" style={{ background: o.color }} />
+            {o.label} <b className="tabular">{(odds[o.key] * 100).toFixed(1)}%</b>
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/* --------------------------------------------------------------- sections */
+
+function Overview({ m }: { m: EngineModel }) {
+  const items = [
+    { Icon: Dice5, title: 'Ball by ball', body: `Each of up to ${m.format.overs * m.format.ballsPerOver * 2} legal deliveries is rolled from a weighted set of outcomes.` },
+    { Icon: Scale, title: 'Skill sets the odds', body: 'Your cards’ attributes, your tactics, the pitch and the match situation move those weights.' },
+    { Icon: Swords, title: 'Strategy can beat ratings', body: 'Plans counter each other, so a weaker side that reads the opponent can win.' },
+    { Icon: Lock, title: 'No hidden hand', body: 'The engine never knows who is human, never adjusts for who is winning, and never looks at trophies.' },
+  ]
+  return (
+    <Section id="overview" icon={<Eye size={20} />} title="The short version">
+      <div className="grid sm:grid-cols-2 gap-3">
+        {items.map(({ Icon, title, body }) => (
+          <Panel key={title} className="flex gap-3">
+            <Icon size={22} className="text-cta shrink-0 mt-0.5" aria-hidden />
+            <div>
+              <h3 className="font-display text-xl font-bold uppercase">{title}</h3>
+              <p className="text-muted text-sm mt-0.5">{body}</p>
+            </div>
+          </Panel>
+        ))}
+      </div>
+    </Section>
+  )
+}
+
+function Flow({ m }: { m: EngineModel }) {
+  const f = m.format
+  return (
+    <Section id="flow" icon={<ListChecks size={20} />} title="How a match runs">
+      <ol className="space-y-3">
+        {[
+          ['Match created', 'A random seed is fixed for the match. It decides the pitch and every dice roll, before anyone picks a team.'],
+          ['Pitch revealed', 'Both captains see the pitch report before choosing a lineup, so you can pick players who suit it.'],
+          ['Lineups locked', 'Each side locks 7 players (3 batters, 1 keeper, 1 all-rounder, 2 bowlers), a batting order, who bowls each over, a field for every over, a batting approach per phase and a toss preference.'],
+          ['Toss', 'A 50/50 coin flip from the seed. The winner’s preference (bat first or chase) decides who bats first.'],
+          ['Two innings', `${f.overs} overs of ${f.ballsPerOver} legal balls each. An innings ends after ${f.maxWickets} wickets or ${f.overs} overs. The chase ends the moment the target is passed.`],
+          ['Result', 'Most runs wins. Equal scores is a tie. Then trophies, rewards and player of the match are worked out.'],
+        ].map(([t, b], i) => (
+          <li key={t} className="flex gap-3">
+            <span className="grid place-items-center w-8 h-8 shrink-0 rounded-full border-2 border-accent text-accent font-display font-bold">{i + 1}</span>
+            <div className="pt-0.5"><b>{t}.</b> <span className="text-muted">{b}</span></div>
+          </li>
+        ))}
+      </ol>
+    </Section>
+  )
+}
+
+function SkillCurve({ scale, width }: { scale: number; width: number }) {
+  const W = 320, H = 150, max = 60
+  const x = (g: number) => ((g + max) / (2 * max)) * W
+  const y = (v: number) => H / 2 - (v / 22) * (H / 2 - 10)
+  const pts = (fn: (g: number) => number) => Array.from({ length: 121 }, (_, i) => -max + i).map((g) => `${x(g).toFixed(1)},${y(fn(g)).toFixed(1)}`).join(' ')
+  return (
+    <figure className="glass rounded-2xl border border-border p-4">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-md" role="img" aria-label="Skill gap to weight shift curve compared with a straight line">
+        <line x1={0} x2={W} y1={H / 2} y2={H / 2} stroke="currentColor" opacity="0.2" />
+        <line x1={W / 2} x2={W / 2} y1={0} y2={H} stroke="currentColor" opacity="0.2" />
+        <polyline points={pts((g) => g / 3)} fill="none" stroke="#94a3b8" strokeDasharray="4 4" strokeWidth="1.5" />
+        <polyline points={pts((g) => Math.round(scale * Math.tanh(g / width)))} fill="none" stroke="var(--accent)" strokeWidth="2.5" />
+        <text x={4} y={12} fontSize="10" fill="currentColor" opacity="0.6">batter better →</text>
+        <text x={W - 4} y={H - 4} fontSize="10" fill="currentColor" opacity="0.6" textAnchor="end">skill gap (−{max} to +{max})</text>
+      </svg>
+      <figcaption className="text-xs text-muted mt-2">
+        <span className="inline-block w-3 h-0.5 bg-accent align-middle mr-1" /> Engine curve: shift = {scale} × tanh(gap ÷ {width}).
+        <span className="inline-block w-3 border-t border-dashed border-slate-400 align-middle mx-1 ml-3" /> A straight line, for comparison. Small gaps count fully; huge gaps are capped, which leaves room for tactics.
+      </figcaption>
+    </figure>
+  )
+}
+
+function OneBall({ m }: { m: EngineModel }) {
+  const total = Object.values(m.baseWeights).reduce((a, b) => a + b, 0)
+  const baseOdds = Object.fromEntries(Object.entries(m.baseWeights).map(([k, v]) => [k, v / total])) as Record<Outcome, number>
+  return (
+    <Section id="ball" icon={<Dice5 size={20} />} title="One ball, step by step" lede="The engine builds a set of weights for the nine possible outcomes, adjusts them in this exact order, then picks one at random in proportion to its weight.">
+      <Step n={1} title="Start from the base weights">
+        <p>Before anything else, an average ball looks like this (weights sum to {total}):</p>
+        <OddsBar odds={baseOdds} />
+      </Step>
+      <Step n={2} title="Traits adjust attributes">
+        <p>Traits that apply to this ball (see <a className="underline" href="#traits">Player traits</a>) change the batter’s or bowler’s attributes for this delivery only. Card levels have already added <b>+{m.progression.levelBonus}</b> per level above 1 to the attributes of that card’s role.</p>
+      </Step>
+      <Step n={3} title="Rate the batter and the bowler">
+        <Formula>{`Batter skill = 0.5 × Technique + 0.3 × Power + 0.2 × (vs Pace or vs Spin)  + pitch batter bonus
+Bowler skill = 0.4 × Accuracy + 0.3 × Variation + 0.3 × Wicket-taking  + pitch pace/spin bonus
+              + 0.15 × Death bowling   (last over, or a chase needing more than 12 an over)
+Skill gap    = Batter skill − Bowler skill`}</Formula>
+      </Step>
+      <Step n={4} title="Bowler accuracy">
+        <Formula>{`a = (Accuracy − 70) ÷ 8      wides −a (1–8)   no-balls −a÷2 (0–4)   dots +a`}</Formula>
+      </Step>
+      <Step n={5} title="Turn the skill gap into weight shifts">
+        <Formula>{`shift = round(${m.skillCurve.scale} × tanh(gap ÷ ${m.skillCurve.width}))
+fours +shift (4–22)   sixes +shift÷2 (2–16)   singles +shift÷4 (18–38)
+dots −shift (14–42)   wickets −shift÷2 (3–14)`}</Formula>
+        <SkillCurve scale={m.skillCurve.scale} width={m.skillCurve.width} />
+      </Step>
+      <Step n={6} title="Batter attributes and the situation">
+        <ul className="list-disc pl-5 space-y-1 text-muted">
+          <li><b className="text-fg">Power above 75:</b> sixes +(Power−75)÷8, fours +(Power−75)÷12.</li>
+          <li><b className="text-fg">Timing above 70:</b> singles +(Timing−70)÷6, dots −(Timing−70)÷8.</li>
+          <li><b className="text-fg">Set batter</b> (4+ balls faced): wickets −2, singles +2. <b className="text-fg">Already dropped:</b> wickets −1.</li>
+          <li><b className="text-fg">Last over, or chasing at more than 12 an over:</b> fours +3, sixes +3, wickets +2, dots −4.</li>
+          <li><b className="text-fg">Chasing above 10 an over:</b> fours, sixes and wickets rise further with the required rate (up to +8).</li>
+          <li><b className="text-fg">4+ wickets down:</b> wickets −1 (the tail digs in).</li>
+          <li><b className="text-fg">Temperament under pressure</b> (last over, tight chase or 3+ down): wickets −(Temperament−70)÷8, singles by the same amount.</li>
+          <li><b className="text-fg">Left-handed batter:</b> wides +1.</li>
+        </ul>
+      </Step>
+      <Step n={7} title="Apply both captains’ plans">
+        <p>The batting side’s approach for this phase and the fielding side’s field for this over add their effects, plus a counter bonus if the two meet. Full tables in <a className="underline" href="#strategy">Strategy</a>.</p>
+      </Step>
+      <Step n={8} title="Matchup and pressure">
+        <p>A batter weak against this bowling type (below {m.matchup.weakBelow}) or strong against it ({m.matchup.strongAtLeast}+) gets a matchup effect, and consecutive dot balls add pressure. See <a className="underline" href="#conditions">Pitch, matchups, pressure</a>.</p>
+      </Step>
+      <Step n={9} title="Trait multipliers, then roll">
+        <p>Boundary and wicket multipliers from traits apply last (for example Yorker King ×0.85 on sixes). Dot, single, four, six and wicket weights never drop below 1. Then one outcome is drawn: an outcome with weight 12 out of a total of 100 has a 12% chance.</p>
+      </Step>
+      <Step n={10} title="Resolve what happened">
+        <div className="grid sm:grid-cols-2 gap-3">
+          <Panel className="!p-4 text-sm">
+            <h4 className="font-bold">Extras</h4>
+            <p className="text-muted mt-1">Wide or no-ball: 1 run, the ball is bowled again. On a dot or single, a ball can beat the keeper for byes: (100 − Keeping) ÷ 5 % chance (+3 for a pace bowler with Movement above 75). 1 bye, or 2–4 one time in five.</p>
+          </Panel>
+          <Panel className="!p-4 text-sm">
+            <h4 className="font-bold">Running and fielding</h4>
+            <p className="text-muted mt-1">Running above 78 can turn a single into two ((Running−78)×2 %); above 82, two into three. A grounded four can be stopped by the fielder in that zone: (Ground fielding−60)÷5 % to make it 2 or 3. A two can be cut to one: (Ground fielding−65)÷6 %.</p>
+          </Panel>
+          <Panel className="!p-4 text-sm">
+            <h4 className="font-bold">Run-outs</h4>
+            <p className="text-muted mt-1">On 1–3 runs: 1 + (Throwing + Ground fielding)÷80 − Running÷40 % chance, +4 when going for a third, +2 in a tight chase, ×1.15 for Rocket Arm (minimum 1%).</p>
+          </Panel>
+          <Panel className="!p-4 text-sm">
+            <h4 className="font-bold">Wickets and catches</h4>
+            <p className="text-muted mt-1">The kind of dismissal is drawn by bowling type. Pace: bowled 18, lbw 14, caught behind 30, caught 32, caught &amp; bowled 6. Spin: bowled 16, lbw 10, stumped 20, caught behind 12, caught 36, caught &amp; bowled 6. Caught behind gets +8 for Movement above 75 and more on a green pitch; caught gets +8 when the batter is attacking or chasing hard. Bowled and lbw always stand. Catches and stumpings stick with probability 16 + 0.8 × fielder rating %. A drop means the batter survives (45% of the time they still take a single).</p>
+          </Panel>
+        </div>
+      </Step>
+    </Section>
+  )
+}
+
+function Strategy({ m }: { m: EngineModel }) {
+  const apps: Approach[] = ['defend', 'balanced', 'attack']
+  const fields: FieldPlan[] = ['defend', 'balanced', 'attack']
+  const cell = (a: Approach, f: FieldPlan) => m.matrix.find((c) => c.approach === a && c.field === f)
+  const runs = m.matrix.map((c) => c.runs)
+  const lo = Math.min(...runs), hi = Math.max(...runs)
+  const bestBat = (f: FieldPlan) => apps.reduce((b, a) => ((cell(a, f)?.runs ?? 0) > (cell(b, f)?.runs ?? 0) ? a : b))
+  return (
+    <Section id="strategy" icon={<Swords size={20} />} title="Strategy: approach & field" lede="This is where a weaker team can win. Each plan beats one plan and loses to another, so there is no single best choice.">
+      <div className="grid lg:grid-cols-2 gap-4">
+        <div>
+          <h3 className="font-bold mb-2">Batting approach <span className="text-muted font-normal">· set per phase: {m.phases.join(', ')}</span></h3>
+          <Table caption="Batting approach effects">
+            <DeltaHead first="Approach" />
+            <tbody>
+              {apps.map((a) => (
+                <tr key={a} className="border-t border-border"><th scope="row" className="px-3 py-2 text-left">{APPROACH[a].label}</th><DeltaCells d={m.approachEffects[a]} /></tr>
+              ))}
+            </tbody>
+          </Table>
+        </div>
+        <div>
+          <h3 className="font-bold mb-2">Field setting <span className="text-muted font-normal">· set for each over</span></h3>
+          <Table caption="Field setting effects">
+            <DeltaHead first="Field" />
+            <tbody>
+              {fields.map((f) => (
+                <tr key={f} className="border-t border-border"><th scope="row" className="px-3 py-2 text-left">{FIELD[f].label}</th><DeltaCells d={m.fieldEffects[f]} /></tr>
+              ))}
+            </tbody>
+          </Table>
+        </div>
+      </div>
+
+      <h3 className="font-bold pt-2">Counters: when a batting approach meets a field</h3>
+      <div className="grid sm:grid-cols-2 gap-3">
+        {m.counters.map((c) => (
+          <Panel key={c.name} className="!p-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-muted">{APPROACH[c.approach].label} batting vs {FIELD[c.field].label.toLowerCase()} field</p>
+            <p className="font-display text-2xl font-bold text-cta">{c.name}</p>
+            <p className="text-sm text-muted">{c.why}</p>
+            <DeltaChips d={c.effect} />
+          </Panel>
+        ))}
+      </div>
+
+      <h3 className="font-bold pt-2">What it adds up to</h3>
+      <p className="text-sm text-muted">Green numbers help the batting side, red help the bowling side. Average first-innings total for two identical average sides when each plan is held for the whole innings. Measured live by running the engine 2,000 times per cell. Starred cells are the batting side’s best reply to that field.</p>
+      <Table caption="Average runs by batting approach and field">
+        <thead>
+          <tr className="text-xs uppercase tracking-wider text-muted">
+            <th scope="col" className="px-3 py-2 text-left">Batting ↓ / Field →</th>
+            {fields.map((f) => <th key={f} scope="col" className="px-3 py-2 text-center">{FIELD[f].label}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {apps.map((a) => (
+            <tr key={a} className="border-t border-border">
+              <th scope="row" className="px-3 py-2 text-left">{APPROACH[a].label}</th>
+              {fields.map((f) => {
+                const c = cell(a, f)
+                const t = c ? (c.runs - lo) / Math.max(1, hi - lo) : 0
+                return (
+                  <td key={f} className="px-3 py-2 text-center tabular" style={{ background: `color-mix(in srgb, #12b76a ${Math.round(t * 45)}%, transparent)` }}>
+                    <span className="font-display text-xl font-bold">{c?.runs.toFixed(1)}{bestBat(f) === a ? '★' : ''}</span>
+                    <span className="block text-xs text-muted">{c?.wickets.toFixed(2)} wkts</span>
+                  </td>
+                )
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+      <Panel className="!p-4 text-sm">
+        <b>Reading the table.</b> Against a defensive field, defensive batting scores most. Against an attacking field, attacking batting does. The fielding side wants the opposite, so each side guesses at the other. Balanced batting has the best worst case, which makes it the safe default.
+      </Panel>
+
+      <h3 className="font-bold pt-2">Bot captains</h3>
+      <p className="text-sm text-muted">Each bot match uses one of these styles, picked at random. The scouting report shows it before you lock in. Players’ plans stay secret.</p>
+      <div className="grid md:grid-cols-3 gap-3">
+        {m.botStyles.map((s) => (
+          <Panel key={s.code} className="!p-4 text-sm">
+            <p className="font-display text-xl font-bold">{s.name}</p>
+            <p className="text-muted">{s.description}</p>
+            <p className="mt-2"><b>Bat:</b> {s.tactics.batApproach.map((a) => APPROACH[a].label).join(' → ')}</p>
+            <p><b>Field:</b> {s.tactics.fieldPlan.map((f) => FIELD[f].short).join(' · ')}</p>
+          </Panel>
+        ))}
+      </div>
+    </Section>
+  )
+}
+
+function Conditions({ m }: { m: EngineModel }) {
+  return (
+    <Section id="conditions" icon={<Wind size={20} />} title="Pitch, matchups, pressure">
+      <h3 className="font-bold">Pitches</h3>
+      <p className="text-sm text-muted">The pitch comes from the match seed: balanced two times in five, each other pitch one time in five. Bonuses add to the bowler’s or batter’s skill rating in step 3. Par is the measured average first-innings total.</p>
+      <div className="grid md:grid-cols-2 gap-3">
+        {m.pitches.map((p) => <Panel key={p.code} className="!p-4"><PitchCard pitch={p} /></Panel>)}
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-4 pt-2">
+        <Panel>
+          <h3 className="font-bold flex items-center gap-2"><Shield size={18} aria-hidden /> Matchups</h3>
+          <p className="text-sm text-muted mt-1">Each batter has separate skills against pace and spin. On every ball the engine checks the one for this bowler’s type:</p>
+          <table className="text-sm mt-2">
+            <tbody>
+              <tr><th className="text-left pr-3 font-semibold">Below {m.matchup.weakBelow}</th><DeltaCells d={m.matchup.weakEffect} /></tr>
+              <tr><th className="text-left pr-3 font-semibold">{m.matchup.strongAtLeast} or more</th><DeltaCells d={m.matchup.strongEffect} /></tr>
+            </tbody>
+          </table>
+          <p className="text-sm text-muted mt-2">The scouting report flags these before the match. Bowl spin at a batter who is weak against spin.</p>
+        </Panel>
+        <Panel>
+          <h3 className="font-bold flex items-center gap-2"><Gauge size={18} aria-hidden /> Pressure</h3>
+          <p className="text-sm text-muted mt-1">
+            Consecutive dot balls build pressure. From {m.pressure.startsAt} dots in a row (counting up to {m.pressure.max}), the next ball gets wickets +(dots − {m.pressure.startsAt - 1}) and singles +1. Calm batters resist: subtract (Temperament − 60) ÷ 15. Any run, extra or wicket resets the count.
+          </p>
+          <Formula>{`extra wicket weight = min(dots, ${m.pressure.max}) − ${m.pressure.startsAt - 1} − (Temperament − 60) ÷ 15`}</Formula>
+        </Panel>
+      </div>
+    </Section>
+  )
+}
+
+function Traits({ m }: { m: EngineModel }) {
+  return (
+    <Section id="traits" icon={<Layers size={20} />} title="Player traits" lede="Some cards carry traits. They only apply in the situation described.">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {m.traits.map((t) => (
+          <Panel key={t.code} className="!p-4">
+            <p className="font-bold">{t.name}</p>
+            <p className="text-sm text-muted">{t.description}</p>
+          </Panel>
+        ))}
+      </div>
+    </Section>
+  )
+}
+
+function Slider({ label, value, min, max, onChange, suffix }: { label: string; value: number; min: number; max: number; onChange: (n: number) => void; suffix?: string }) {
+  return (
+    <label className="block">
+      <span className="flex justify-between text-sm"><span className="font-semibold">{label}</span><b className="tabular">{value}{suffix}</b></span>
+      <input type="range" min={min} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full accent-[var(--accent)] cursor-pointer" />
+    </label>
+  )
+}
+
+function OddsCalculator({ m }: { m: EngineModel }) {
+  const [batter, setBatter] = useState(75)
+  const [vs, setVs] = useState(75)
+  const [bowler, setBowler] = useState(75)
+  const [bowlType, setBowlType] = useState<BowlType>('pace')
+  const [approach, setApproach] = useState<Approach>('balanced')
+  const [field, setField] = useState<FieldPlan>('balanced')
+  const [pitch, setPitch] = useState<Pitch>('balanced')
+  const [over, setOver] = useState(2)
+  const [pressure, setPressure] = useState(0)
+  const [chase, setChase] = useState(false)
+  const [need, setNeed] = useState(20)
+  const body = { batterRating: batter, batterVs: vs, bowlerRating: bowler, bowlType, approach, field, pitch, over, innings: (chase ? 2 : 1) as 1 | 2, pressure, wickets: 1, need }
+  const q = useQuery({ queryKey: ['odds', body], queryFn: () => api.engineOdds(body), placeholderData: (prev) => prev })
+  const r = q.data
+  const ballsLeft = (m.format.overs - over + 1) * m.format.ballsPerOver
+
+  return (
+    <Section id="calculator" icon={<Calculator size={20} />} title="Odds calculator" lede="Set up any delivery and see the exact odds the engine would use. This calls the same function the match simulation uses.">
+      <div className="grid lg:grid-cols-[22rem_1fr] gap-4">
+        <Panel className="space-y-4">
+          <Slider label="Batter rating" value={batter} min={30} max={99} onChange={(n) => { setBatter(n); setVs(n) }} />
+          <Slider label={`Batter vs ${bowlType}`} value={vs} min={30} max={99} onChange={setVs} />
+          <Slider label="Bowler rating" value={bowler} min={30} max={99} onChange={setBowler} />
+          <div className="grid grid-cols-2 gap-2">
+            {(['pace', 'spin'] as const).map((t) => (
+              <button key={t} type="button" aria-pressed={bowlType === t} onClick={() => setBowlType(t)} className={cn('min-h-9 rounded-lg border text-sm font-semibold cursor-pointer capitalize', bowlType === t ? 'bg-accent text-accent-fg border-accent' : 'border-border')}>{t}</button>
+            ))}
+          </div>
+          <div><p className="text-sm font-semibold mb-1">Batting approach</p><PlanSegment kind="bat" label="Batting approach" value={approach} onChange={setApproach} /></div>
+          <div><p className="text-sm font-semibold mb-1">Field</p><PlanSegment kind="field" label="Field" value={field} onChange={setField} /></div>
+          <label className="block text-sm">
+            <span className="font-semibold">Pitch</span>
+            <select value={pitch} onChange={(e) => setPitch(e.target.value as Pitch)} className="mt-1 w-full min-h-10 rounded-lg border border-border bg-card px-2 cursor-pointer">
+              {m.pitches.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}
+            </select>
+          </label>
+          <Slider label="Over" value={over} min={1} max={m.format.overs} onChange={setOver} />
+          <Slider label="Dot balls in a row" value={pressure} min={0} max={m.pressure.max} onChange={setPressure} />
+          <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer">
+            <input type="checkbox" checked={chase} onChange={(e) => setChase(e.target.checked)} className="w-4 h-4 accent-[var(--accent)]" /> Second innings (chasing)
+          </label>
+          {chase && <Slider label={`Runs needed (from ${ballsLeft} balls)`} value={need} min={1} max={90} onChange={setNeed} />}
+        </Panel>
+        <div className="space-y-4">
+          <Panel>
+            {!r ? <p className="text-muted">Calculating…</p> : (
+              <>
+                <div className="grid grid-cols-3 gap-3 mb-4">
+                  <div><p className="text-xs font-bold uppercase tracking-wider text-muted">Runs per ball</p><p className="font-display text-4xl font-bold tabular">{r.runsPerBall.toFixed(2)}</p></div>
+                  <div><p className="text-xs font-bold uppercase tracking-wider text-muted">Wicket chance</p><p className="font-display text-4xl font-bold tabular text-wicket">{(r.wicketChance * 100).toFixed(1)}%</p></div>
+                  <div><p className="text-xs font-bold uppercase tracking-wider text-muted">Skill gap</p><p className="font-display text-4xl font-bold tabular">{r.skillGap > 0 ? '+' : ''}{r.skillGap.toFixed(1)}</p><p className="text-xs text-muted">shift {r.skillShift > 0 ? '+' : ''}{r.skillShift}</p></div>
+                </div>
+                <OddsBar odds={r.odds} />
+                <p className="text-xs text-muted mt-3">Runs per ball counts runs off the bat plus wides and no-balls, before fielding and running adjustments. The batter is assumed settled (2 balls faced) with one wicket down.</p>
+              </>
+            )}
+          </Panel>
+          {r && (r.factors?.length ?? 0) > 0 && (
+            <Panel>
+              <h3 className="font-bold mb-2">Strategy, matchup and pressure effects on this ball</h3>
+              <table className="text-sm w-full">
+                <DeltaHead first="Factor" />
+                <tbody>
+                  {r.factors.map((f) => <tr key={f.name} className="border-t border-border"><th scope="row" className="px-3 py-2 text-left">{f.name}</th><DeltaCells d={f.effect} /></tr>)}
+                </tbody>
+              </table>
+            </Panel>
+          )}
+        </div>
+      </div>
+    </Section>
+  )
+}
+
+function After({ m }: { m: EngineModel }) {
+  const p = m.progression
+  const rarities = ['Bronze', 'Silver', 'Gold', 'Legend'] as const
+  return (
+    <Section id="after" icon={<Trophy size={20} />} title="After the match">
+      <div className="grid md:grid-cols-2 gap-4">
+        <Panel>
+          <h3 className="font-bold">Player of the match</h3>
+          <p className="text-sm text-muted mt-1">The player with the most points across both innings:</p>
+          <Formula>{`batting  = runs + fours + 2 × sixes
+bowling  = 22 × wickets − runs conceded ÷ 3
+fielding = 12 × catches + 16 × stumpings + 14 × run-outs
+         + 3 × fielding saves − 6 × drops`}</Formula>
+        </Panel>
+        <Panel>
+          <h3 className="font-bold">Trophies</h3>
+          <Formula>{`change = 30 + (opponent trophies − your trophies) ÷ 20
+kept between 20 and 40, added on a win, taken on a loss, 0 on a tie`}</Formula>
+          <p className="text-sm text-muted mt-2">Arenas: {m.arenas.map((a) => `${a.Name} ${a.MinTrophy}+`).join(' · ')}. Trophies never go below 0.</p>
+        </Panel>
+        <Panel>
+          <h3 className="font-bold">Rewards</h3>
+          <p className="text-sm text-muted mt-1">A win earns {p.rewardCardsPerWin} new cards. Each card’s rarity is rolled with your arena’s odds:</p>
+          <div className="overflow-x-auto mt-2">
+            <table className="text-sm w-full">
+              <thead><tr className="text-xs uppercase text-muted"><th className="text-left py-1">Arena</th>{rarities.map((r) => <th key={r} className="text-right py-1 px-1">{r}</th>)}</tr></thead>
+              <tbody>
+                {m.arenas.map((a) => (
+                  <tr key={a.Name} className="border-t border-border">
+                    <th scope="row" className="text-left py-1 font-medium">{a.Name}</th>
+                    {rarities.map((r) => <td key={r} className="text-right px-1 tabular">{p.rewardOdds[a.Name]?.[r]}%</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+        <Panel>
+          <h3 className="font-bold">Experience and levels</h3>
+          <p className="text-sm text-muted mt-1">
+            A loss or tie gives every card that played +{p.lossXP} XP. Training gives XP by sacrificing cards. Reaching the next level takes level × {p.xpPerLevel} XP, and each level adds +{p.levelBonus} to the attributes that matter for that card’s role.
+            Level caps: {rarities.map((r) => `${r} ${p.levelCaps[r]}`).join(', ')}.
+          </p>
+        </Panel>
+      </div>
+    </Section>
+  )
+}
+
+function Fairness({ m }: { m: EngineModel }) {
+  return (
+    <Section id="fairness" icon={<Lock size={20} />} title="Fairness & bots">
+      <ul className="space-y-3">
+        <li><b>Deterministic.</b> The seed is fixed when the match is created, before lineups are picked. The same seed and the same two lineups always produce exactly the same match, which is why replays are identical.</li>
+        <li><b>Blind to players.</b> The engine only sees cards, plans and the pitch. It does not know which side is a person or a bot, how many trophies anyone has, or who is ahead. Nothing changes the odds to keep a match close.</li>
+        <li><b>Bots play by the same rules.</b> A bot’s cards are drawn from the rarities allowed in your arena, at levels typical for it, with up to ±5% random strength. Its trophy count is within 30 of yours. Its captain style is one of the {m.botStyles.length} shown above.</li>
+        <li><b>Estimates on screen.</b> The live win predictor and “heading for” projection are rough guides worked out on your device from the score and the pitch’s par. They are not part of the engine and never affect the result.</li>
+      </ul>
+    </Section>
+  )
+}

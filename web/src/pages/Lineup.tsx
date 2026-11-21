@@ -8,11 +8,13 @@ import { PageHeader, Panel, controlClass } from '../components/ui/chrome'
 import { ROLE_LABEL, SQUAD_SLOTS } from '../lib/labels'
 import { defaultBattingOrder, defaultBowlingPlan, teamFielding, validateBowlingPlan, validateSquad } from '../lib/rules'
 import { cn } from '../lib/cn'
-import type { PlayerCard as Card, Role } from '../types/engine'
+import type { Approach, PlayerCard as Card, FieldPlan, Role } from '../types/engine'
+import { PlanSegment, ScoutingPanel } from '../components/match/MatchPlan'
+import { APPROACH, FIELD, PHASES, pitchFit, tossHint } from '../lib/strategy'
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { ChevronDown, ChevronUp, GripVertical } from 'lucide-react'
+import { ChevronDown, ChevronUp, GripVertical, Swords } from 'lucide-react'
 
 function SortableRow({ id, name, index, total, onMove }: { id: string; name: string; index: number; total: number; onMove: (index: number, dir: -1 | 1) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id })
@@ -41,6 +43,8 @@ export function LineupPage() {
   const [order, setOrder] = useState<string[]>([])
   const [plan, setPlan] = useState<(string | '')[]>(['', '', '', '', ''])
   const [toss, setToss] = useState<'bat' | 'chase'>('chase')
+  const [batApproach, setBatApproach] = useState<Approach[]>(['balanced', 'balanced', 'balanced'])
+  const [fieldPlan, setFieldPlan] = useState<FieldPlan[]>(['balanced', 'balanced', 'balanced', 'balanced', 'balanced'])
   const [filter, setFilter] = useState<Role | ''>('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
@@ -49,6 +53,7 @@ export function LineupPage() {
   const byId = useMemo(() => Object.fromEntries(all.map((c) => [c.id, c])), [all])
   const squad = picked.map((x) => byId[x]).filter(Boolean)
   const opp = match.data?.youAreHome ? match.data?.awayLineup : match.data?.homeLineup
+  const pitch = match.data?.pitch
 
   useEffect(() => {
     if (match.data?.status === 'COMPLETE') nav(`/match/${id}/live`)
@@ -102,7 +107,7 @@ export function LineupPage() {
     setErr('')
     setBusy(true)
     try {
-      const m = await api.lockLineup(id!, { cardIds: picked, battingOrder: order, bowlingPlan: plan as string[], tossPref: toss })
+      const m = await api.lockLineup(id!, { cardIds: picked, battingOrder: order, bowlingPlan: plan as string[], tossPref: toss, tactics: { batApproach, fieldPlan } })
       if (m.status === 'COMPLETE' || m.status === 'SIMULATING') nav(`/match/${id}/live`)
     } catch (e) {
       setErr((e as Error).message)
@@ -141,6 +146,8 @@ export function LineupPage() {
         lede={`vs ${match.data?.opponent.name ?? 'opponent'}${match.data?.opponent.trophies != null ? ` · ${match.data.opponent.trophies} trophies` : ''}. Fill every slot, then lock in.`}
         action={<Button variant="outline" onClick={autoPick}>Fill best available</Button>}
       />
+
+      <ScoutingPanel pitch={pitch} style={match.data?.opponentStyle} oppCards={opp?.cards ?? []} />
 
       <div className="grid lg:grid-cols-2 gap-4">
         <Panel>
@@ -216,23 +223,33 @@ export function LineupPage() {
           )}
         </Panel>
         <Panel>
-          <h2 className="font-display text-2xl font-semibold">Bowling plan</h2>
-          <p className="text-muted text-sm mb-3">Each bowler bowls exactly 2 overs. The all-rounder bowls 1. Nobody bowls back-to-back overs.</p>
+          <h2 className="font-display text-2xl font-semibold">Bowling &amp; field plan</h2>
+          <p className="text-muted text-sm mb-3">Each bowler bowls exactly 2 overs. The all-rounder bowls 1. Nobody bowls back-to-back overs. Set the field for every over.</p>
           {filled < 7 ? (
             <p className="text-muted">Choose all seven players and the overs fill in. You can change them after that.</p>
           ) : (
             <div className="space-y-2">
-              {plan.map((pid, i) => (
-                <div key={i}>
-                  <label className="text-sm text-muted" htmlFor={`over-${i}`}>Over {i + 1}</label>
+              {plan.map((pid, i) => {
+                const fit = pid ? pitchFit(pitch, byId[pid]?.bowlType ?? 'pace') : null
+                return (
+                <div key={i} className="rounded-xl border border-border p-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-sm font-semibold" htmlFor={`over-${i}`}>Over {i + 1}</label>
+                    {fit === 'suits' && <span className="rounded-md bg-success/15 text-success px-1.5 text-xs font-bold">Pitch suits {byId[pid]?.bowlType}</span>}
+                    {fit === 'against' && <span className="rounded-md bg-wicket/15 text-wicket px-1.5 text-xs font-bold">Pitch works against {byId[pid]?.bowlType}</span>}
+                  </div>
                   <select id={`over-${i}`} value={pid} onChange={(e) => setPlan((p) => p.map((x, j) => j === i ? e.target.value : x))} className={cn(controlClass, 'w-full mt-1 cursor-pointer')}>
                     <option value="">Choose a bowler</option>
                     {squad.filter((c) => c.role === 'BOWL' || c.role === 'AR').map((c) => (
-                      <option key={c.id} value={c.id}>{c.name} ({ROLE_LABEL[c.role]})</option>
+                      <option key={c.id} value={c.id}>{c.name} ({ROLE_LABEL[c.role]}, {c.bowlType})</option>
                     ))}
                   </select>
+                  <div className="mt-2">
+                    <PlanSegment kind="field" label={`Field for over ${i + 1}`} value={fieldPlan[i]} onChange={(v) => setFieldPlan((f) => f.map((x, j) => (j === i ? v : x)))} />
+                  </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
           {bowlErr && <p className="text-wicket text-sm mt-2" role="alert">{bowlErr}</p>}
@@ -240,9 +257,26 @@ export function LineupPage() {
       </div>
 
       <Panel>
+        <h2 className="font-display text-2xl font-semibold flex items-center gap-2"><Swords size={22} aria-hidden /> Batting approach</h2>
+        <p className="text-muted text-sm mb-3">
+          How your batters play in each phase. Plans counter each other: attacking batting beats an attacking field but holes out to a defensive one; defensive batting milks a defensive field but gets strangled by an attacking one.
+        </p>
+        <div className="grid sm:grid-cols-3 gap-3">
+          {PHASES.map((ph, i) => (
+            <div key={ph.label}>
+              <p className="text-sm font-semibold">{ph.label} <span className="text-muted font-normal">· {ph.overs}</span></p>
+              <div className="mt-1"><PlanSegment kind="bat" label={`${ph.label} batting approach`} value={batApproach[i]} onChange={(v) => setBatApproach((a) => a.map((x, j) => (j === i ? v : x)))} /></div>
+              <p className="text-xs text-muted mt-1.5">{APPROACH[batApproach[i]].help}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-muted mt-3">Field settings: {(['defend', 'balanced', 'attack'] as const).map((f) => `${FIELD[f].label}: ${FIELD[f].help}`).join(' ')}</p>
+      </Panel>
+
+      <Panel>
         <fieldset>
           <legend className="font-display text-2xl font-semibold">If you win the toss</legend>
-          <p className="text-muted text-sm mb-3">This is only used when the toss goes your way.</p>
+          <p className="text-muted text-sm mb-3">This is only used when the toss goes your way.{tossHint(pitch) ? ` ${tossHint(pitch)}` : ''}</p>
           <div className="grid sm:grid-cols-2 gap-2">
             {([
               ['bat', 'Bat first', 'Set a total for them to chase'],
