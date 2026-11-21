@@ -7,6 +7,7 @@ import { PlayerCard } from '../components/card/PlayerCard'
 import { statusLabel } from '../lib/labels'
 import { useUI } from '../store/ui'
 import { useState } from 'react'
+import { Flame, ListOrdered, Play, Swords, Trophy, Users } from 'lucide-react'
 
 export function HomePage() {
   const nav = useNavigate()
@@ -24,6 +25,9 @@ export function HomePage() {
   const progress = user ? Math.min(100, ((user.trophies - prevMin) / Math.max(1, nextMin - prevMin)) * 100) : 0
   const best = (cards.data ?? []).slice().sort((a, b) => b.overall - a.overall).slice(0, 5)
   const recent = (hist.data ?? []).slice(0, 5)
+  const done = (hist.data ?? []).filter((m) => m.status === 'COMPLETE')
+  const played = done.length
+  const wins = done.filter((m) => m.winnerUserId === user?.id).length
   const toNext = user?.nextArenaMin != null ? Math.max(0, user.nextArenaMin - user.trophies) : null
 
   async function start(mode: 'bot' | 'pvp') {
@@ -42,7 +46,7 @@ export function HomePage() {
     <div className="space-y-8">
       {starter && (
         <Panel>
-          <h2 className="font-display text-3xl font-semibold">Your starter pack</h2>
+          <h2 className="font-display text-3xl font-bold uppercase">Your starter pack <span className="text-cta">has arrived!</span></h2>
           <p className="text-muted mt-1 mb-4">Tap each card to turn it over. These players are yours to keep.</p>
           <div className="felt-tray flex flex-wrap gap-3">
             {starter.map((c, i) => (
@@ -56,41 +60,79 @@ export function HomePage() {
         </Panel>
       )}
 
-      <Panel className="overflow-hidden">
-        <p className="text-sm font-semibold uppercase tracking-wide text-accent">{user?.arena ?? 'Arena'} arena</p>
-        <h1 className="font-display text-4xl sm:text-5xl font-semibold tracking-tight mt-1">
-          {user ? `${user.trophies} trophies` : 'Loading your club…'}
-        </h1>
-        <p className="text-muted mt-2 max-w-xl">Win matches to move up. A match is seven cards and five overs.</p>
-        <div className="mt-5 max-w-lg">
-          <ProgressBar value={progress} label={user?.nextArena ? `Progress toward ${user.nextArena}` : 'Arena progress'} />
-          <p className="text-sm text-muted mt-2">
-            {user?.nextArena && toNext != null ? `${toNext} trophies to ${user.nextArena}` : 'You are in the top arena.'}
-          </p>
+      <section className="hero-stadium rounded-3xl px-5 py-7 sm:px-8 sm:py-9">
+        <div className="relative z-10 grid lg:grid-cols-[1.2fr_1fr] gap-8 items-center">
+          <div>
+            <p className="inline-flex items-center gap-2 rounded-full bg-black/25 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-[#ffd166]">
+              <Trophy size={14} aria-hidden /> {user?.arena ?? 'Bronze'} arena
+            </p>
+            <h1 className="font-display text-5xl sm:text-6xl font-bold uppercase leading-[0.95] mt-3">
+              {user ? <>Your XI is <span className="text-[#ffd166] text-glow">ready</span></> : 'Loading your club…'}
+            </h1>
+            <p className="text-white/80 mt-3 max-w-md text-lg">Seven cards. Five overs. Every ball can swing it. Win to climb the arenas and earn new players.</p>
+            <div className="flex flex-wrap gap-3 mt-6">
+              <Button className="min-h-14 px-7 text-2xl" disabled={!!busy} onClick={() => start('bot')}>
+                <Play size={22} fill="currentColor" aria-hidden />
+                {busy === 'bot' ? 'Starting…' : 'Quick match'}
+              </Button>
+              <Button variant="pitch" className="min-h-14 px-6 text-xl" disabled={!!busy} onClick={() => start('pvp')}>
+                <Swords size={20} aria-hidden />
+                {busy === 'pvp' ? 'Searching…' : 'Versus player'}
+              </Button>
+            </div>
+            {err && <p className="text-[#ffb4b4] mt-3" role="alert">{err}</p>}
+          </div>
+          <div className="rounded-2xl bg-black/30 p-5 backdrop-blur-sm border border-white/10">
+            <div className="flex items-end justify-between">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/60">Trophies</p>
+                <p className="font-display text-6xl font-bold tabular leading-none text-[#ffd166]">{user?.trophies ?? '—'}</p>
+              </div>
+              <Trophy size={56} className="text-[#ffd166] drop-shadow-[0_0_18px_rgba(255,209,102,0.5)]" aria-hidden />
+            </div>
+            <div className="mt-4">
+              <ProgressBar value={progress} label={user?.nextArena ? `Progress toward ${user.nextArena}` : 'Arena progress'} />
+              <p className="text-sm text-white/75 mt-2">
+                {user?.nextArena && toNext != null ? <><b className="text-white">{toNext}</b> trophies to unlock <b className="text-white">{user.nextArena}</b></> : 'You are in the top arena. Defend your spot!'}
+              </p>
+            </div>
+            <div className="grid grid-cols-3 gap-2 mt-4 text-center">
+              {[
+                ['Played', String(played)],
+                ['Won', String(wins)],
+                ['Win %', played ? `${Math.round((wins / played) * 100)}` : '—'],
+              ].map(([k, v]) => (
+                <div key={k} className="rounded-xl bg-white/10 py-2">
+                  <div className="font-display text-2xl font-bold tabular">{v}</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-white/60">{k}</div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-3 mt-6">
-          <Button disabled={!!busy} onClick={() => start('bot')}>{busy === 'bot' ? 'Starting…' : 'Practice vs bot'}</Button>
-          <Button variant="outline" disabled={!!busy} onClick={() => start('pvp')}>{busy === 'pvp' ? 'Searching…' : 'Find a player'}</Button>
-        </div>
-        {err && <p className="text-wicket mt-3" role="alert">{err}</p>}
-      </Panel>
+      </section>
 
       <section className="grid sm:grid-cols-3 gap-3">
         {[
-          ['1. Squad', 'Three batters, one keeper, one all-rounder, two bowlers.'],
-          ['2. Orders', 'Drag the batting order and assign every over.'],
-          ['3. Match', 'Watch five overs, then train the cards you earn.'],
-        ].map(([title, body]) => (
-          <Panel key={title}>
-            <h2 className="font-display text-2xl font-semibold">{title}</h2>
-            <p className="text-muted mt-1">{body}</p>
+          { Icon: Users, title: 'Pick your XI', body: '3 batters, a keeper, an all-rounder and 2 bowlers.' },
+          { Icon: ListOrdered, title: 'Set the plan', body: 'Choose the batting order and who bowls each over.' },
+          { Icon: Flame, title: 'Watch it unfold', body: 'Live ball-by-ball action. Win cards and trophies.' },
+        ].map(({ Icon, title, body }, i) => (
+          <Panel key={title} className="flex gap-3 items-start">
+            <span className="grid place-items-center w-11 h-11 shrink-0 rounded-xl bg-accent/15 text-accent">
+              <Icon size={22} aria-hidden />
+            </span>
+            <div>
+              <h2 className="font-display text-xl font-bold uppercase tracking-wide"><span className="text-cta mr-1">{i + 1}.</span>{title}</h2>
+              <p className="text-muted text-sm mt-0.5">{body}</p>
+            </div>
           </Panel>
         ))}
       </section>
 
       <section>
         <div className="flex items-end justify-between gap-3 mb-3">
-          <h2 className="font-display text-3xl font-semibold">Best cards</h2>
+          <h2 className="font-display text-3xl font-bold uppercase">Your best cards</h2>
           <Button variant="ghost" onClick={() => nav('/collection')}>View collection</Button>
         </div>
         {cards.isPending ? (
@@ -106,7 +148,7 @@ export function HomePage() {
 
       <section>
         <div className="flex items-end justify-between gap-3 mb-3">
-          <h2 className="font-display text-3xl font-semibold">Recent results</h2>
+          <h2 className="font-display text-3xl font-bold uppercase">Recent results</h2>
           <Button variant="ghost" onClick={() => nav('/history')}>All matches</Button>
         </div>
         {recent.length === 0 ? (
@@ -122,10 +164,17 @@ export function HomePage() {
                   key={m.id}
                   type="button"
                   onClick={() => nav(m.status === 'COMPLETE' ? `/match/${m.id}/result` : `/match/${m.id}/lineup`)}
-                  className="w-full text-left border border-border rounded-xl px-4 py-3 min-h-11 bg-card cursor-pointer hover:bg-black/5 dark:hover:bg-white/10 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  className="game-tile w-full text-left border border-border rounded-xl px-4 py-3 min-h-11 glass cursor-pointer hover:bg-black/5 dark:hover:bg-white/10 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
-                  <div className="flex justify-between gap-3">
-                    <span className="font-semibold">vs {m.opponent.name}</span>
+                  <div className="flex justify-between gap-3 items-center">
+                    <span className="font-semibold flex items-center gap-2">
+                      {m.status === 'COMPLETE' && (
+                        <span className={'grid place-items-center w-7 h-7 rounded-lg font-display font-bold text-white ' + (outcome === 'win' ? 'bg-[#12b76a]' : outcome === 'loss' ? 'bg-[#dc2626]' : 'bg-slate-500')} aria-hidden>
+                          {outcome === 'win' ? 'W' : outcome === 'loss' ? 'L' : 'T'}
+                        </span>
+                      )}
+                      vs {m.opponent.name}
+                    </span>
                     <span className={outcome === 'win' && m.status === 'COMPLETE' ? 'text-success font-semibold' : outcome === 'loss' && m.status === 'COMPLETE' ? 'text-wicket font-semibold' : 'text-muted'}>{label}</span>
                   </div>
                   {score && <div className="text-sm text-muted mt-1">{score}</div>}

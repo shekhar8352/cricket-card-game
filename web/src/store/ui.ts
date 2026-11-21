@@ -10,7 +10,7 @@ interface UIState {
 }
 
 export const useUI = create<UIState>((set) => ({
-  theme: (localStorage.getItem('ccg_theme') as 'light' | 'dark') || 'light',
+  theme: (localStorage.getItem('ccg_theme') as 'light' | 'dark') || 'dark',
   speed: 1,
   starter: null,
   toggleTheme: () =>
