@@ -412,7 +412,7 @@ func resolveBall(rng *rand.Rand, innings, over, ball, seq int, striker, non, bow
 		ev.Runs = 1
 		ev.Extras = Extras{Type: ExtraWide, Runs: 1}
 		ev.Shot = Shot{Zone: ZoneFineLeg, Angle: 20, Distance: 0.15}
-		ev.Commentary = commentWide(striker, bowler)
+		ev.Commentary = commentWide(striker, bowler, seq)
 		return ev
 	case OutcomeNoBall:
 		ev.Legal = false
@@ -524,7 +524,7 @@ func resolveBall(rng *rand.Rand, innings, over, ball, seq int, striker, non, bow
 			if ev.Runs < 0 {
 				ev.Runs = 0
 			}
-			ev.Commentary = commentRunOut(striker, d)
+			ev.Commentary = commentRunOut(striker, d, ev.Seq)
 			return ev
 		}
 	}
@@ -615,7 +615,7 @@ func resolveWicketChance(rng *rand.Rand, ev BallEvent, striker, bowler *Card, ba
 	}
 	d.Text = dismissalText(kind, bowler, fielder)
 	ev.Dismissal = d
-	ev.Commentary = commentWicket(striker, bowler, d)
+	ev.Commentary = commentWicket(striker, bowler, d, ev.Seq)
 	return ev
 }
 

@@ -436,7 +436,16 @@ func (s *Server) matchDTO(ctx context.Context, m store.MatchRow, viewer store.Us
 		}
 		var cards []engine.Card
 		_ = json.Unmarshal(l.Snapshot, &cards)
-		dto := map[string]any{"cards": cards, "locked": l.LockedAt != nil}
+		// Include the derived overall rating so match screens can show it on cards.
+		type cardView struct {
+			engine.Card
+			Overall int `json:"overall"`
+		}
+		views := make([]cardView, len(cards))
+		for i, c := range cards {
+			views[i] = cardView{Card: c, Overall: engine.Overall(c)}
+		}
+		dto := map[string]any{"cards": views, "locked": l.LockedAt != nil}
 		if mine || !hideOrders {
 			dto["battingOrder"] = l.BattingOrder
 			dto["bowlingPlan"] = l.BowlingPlan
