@@ -23,7 +23,14 @@ export function useMatchPlayback(matchId: string, log: BallEvent[] | undefined, 
   }, [matchId, complete])
 
   const balls = wsLog ?? log ?? []
-  const delay = speed === 2 ? 750 : 1500
+  const base = speed === 2 ? 750 : 1500
+  const last = idx > 0 ? balls[idx - 1] : undefined
+  const next = balls[idx]
+  // Linger on the moments that matter so players can take them in.
+  let delay = base
+  if (last && next && last.innings !== next.innings) delay = base * 3.5
+  else if (last && (last.outcome === 'wicket' || last.outcome === 'six')) delay = base * 1.7
+  else if (last && (last.outcome === 'four' || (last.chance && !last.chance.converted))) delay = base * 1.4
 
   useEffect(() => {
     if (skip) {
@@ -37,5 +44,13 @@ export function useMatchPlayback(matchId: string, log: BallEvent[] | undefined, 
 
   const shown = useMemo(() => balls.slice(0, idx), [balls, idx])
   const current = shown[shown.length - 1]
-  return { shown, current, total: balls.length, done: idx >= balls.length && balls.length > 0, skipToEnd: () => setSkip(true) }
+  return {
+    shown,
+    current,
+    next,
+    total: balls.length,
+    inningsBreak: !!(last && next && last.innings !== next.innings),
+    done: idx >= balls.length && balls.length > 0,
+    skipToEnd: () => setSkip(true),
+  }
 }

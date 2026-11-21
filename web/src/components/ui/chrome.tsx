@@ -8,7 +8,7 @@ export function PageHeader({ title, lede, action }: { title: string; lede?: stri
   return (
     <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
       <div className="max-w-2xl">
-        <h1 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight">{title}</h1>
+        <h1 className="font-display text-4xl sm:text-5xl font-bold uppercase tracking-tight">{title}</h1>
         {lede && <p className="mt-1 text-base text-muted leading-relaxed">{lede}</p>}
       </div>
       {action}
@@ -17,7 +17,7 @@ export function PageHeader({ title, lede, action }: { title: string; lede?: stri
 }
 
 export function Panel({ className, children }: { className?: string; children: ReactNode }) {
-  return <section className={cn('bg-card border border-border rounded-xl p-4 sm:p-5', className)}>{children}</section>
+  return <section className={cn('glass border border-border rounded-2xl p-4 sm:p-5 shadow-[0_10px_30px_-18px_rgba(0,0,0,0.35)]', className)}>{children}</section>
 }
 
 export function EmptyState({ title, body, action }: { title: string; body: string; action?: ReactNode }) {
@@ -41,7 +41,7 @@ export function ProgressBar({ value, label }: { value: number; label: string }) 
       aria-valuemax={100}
       aria-valuenow={Math.round(width)}
     >
-      <div className="h-full rounded-full bg-accent-bright" style={{ width: `${width}%` }} />
+      <div className="h-full rounded-full bg-gradient-to-r from-accent-bright to-cta transition-[width] duration-700" style={{ width: `${width}%` }} />
     </div>
   )
 }
@@ -68,5 +68,32 @@ export function Choice({
     >
       {children}
     </button>
+  )
+}
+
+export function Brand({ size = 'md', tagline }: { size?: 'md' | 'lg'; tagline?: boolean }) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <svg viewBox="0 0 40 40" className={size === 'lg' ? 'w-12 h-12' : 'w-9 h-9'} aria-hidden>
+        <defs>
+          <linearGradient id="brand-g" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#ffc23d" />
+            <stop offset="1" stopColor="#ff7a1a" />
+          </linearGradient>
+        </defs>
+        <rect x="2" y="2" width="36" height="36" rx="10" fill="#0b6a3e" />
+        <rect x="2" y="2" width="36" height="36" rx="10" fill="none" stroke="url(#brand-g)" strokeWidth="2.5" />
+        <rect x="13" y="10" width="3" height="20" rx="1" fill="#fff" />
+        <rect x="18.5" y="10" width="3" height="20" rx="1" fill="#fff" />
+        <rect x="24" y="10" width="3" height="20" rx="1" fill="#fff" />
+        <rect x="12" y="8.5" width="16" height="2.5" rx="1.2" fill="url(#brand-g)" />
+      </svg>
+      <div className="leading-none">
+        <div className={cn('font-display font-bold uppercase tracking-tight', size === 'lg' ? 'text-4xl' : 'text-2xl')}>
+          Pitch <span className="text-cta">XI</span>
+        </div>
+        {tagline && <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted mt-1">5-over card cricket</div>}
+      </div>
+    </div>
   )
 }
