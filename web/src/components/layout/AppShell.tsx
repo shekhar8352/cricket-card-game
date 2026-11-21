@@ -5,6 +5,7 @@ import { api, setToken } from '../../api/client'
 import { useUI } from '../../store/ui'
 import { Trophy, Home, Play, Layers, Dumbbell, Medal, History, Users, Moon, Sun, LogOut, Menu } from 'lucide-react'
 import { cn } from '../../lib/cn'
+import { Brand } from '../ui/chrome'
 
 const groups = [
   {
@@ -48,7 +49,7 @@ function itemClass(active: boolean) {
   return cn(
     'flex items-center gap-3 rounded-xl min-h-11 px-3 text-base cursor-pointer transition-colors duration-200',
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
-    active ? 'bg-accent/10 text-accent font-semibold' : 'text-fg hover:bg-black/5 dark:hover:bg-white/10',
+    active ? 'bg-accent/15 text-accent font-semibold shadow-[inset_3px_0_0_var(--accent)]' : 'text-fg hover:bg-black/5 dark:hover:bg-white/10',
   )
 }
 
@@ -68,10 +69,15 @@ export function AppShell() {
 
   return (
     <div className="min-h-svh bg-bg text-fg md:flex">
-      <aside className="hidden md:flex flex-col w-60 border-r border-border bg-card sticky top-0 h-svh">
+      <aside className="hidden md:flex flex-col w-60 border-r border-border glass sticky top-0 h-svh">
         <div className="px-5 py-5">
-          <div className="font-display text-3xl font-semibold text-accent leading-none">Pitch XI</div>
-          <p className="text-sm text-muted mt-1">5-over card cricket</p>
+          <Brand tagline />
+        </div>
+        <div className="px-3 pb-4">
+          <NavLink to="/play" className="btn-cta flex items-center justify-center gap-2 rounded-xl min-h-12 font-display text-xl font-bold uppercase tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+            <Play size={18} fill="currentColor" aria-hidden />
+            Play now
+          </NavLink>
         </div>
         <nav className="flex-1 px-3 overflow-y-auto" aria-label="Main">
           {groups.map((group) => (
@@ -102,13 +108,13 @@ export function AppShell() {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="min-h-16 border-b border-border bg-card flex items-center justify-between gap-3 px-4 sticky top-0 z-20">
-          <div className="md:hidden font-display text-2xl font-semibold text-accent">Pitch XI</div>
+        <header className="min-h-16 border-b border-border glass flex items-center justify-between gap-3 px-4 sticky top-0 z-20">
+          <div className="md:hidden"><Brand /></div>
           <div className="flex items-center gap-2 ml-auto">
             {user && (
-              <div className="flex items-center gap-2 rounded-xl bg-black/5 dark:bg-white/10 px-3 min-h-11" aria-label={`${user.trophies} trophies, ${user.arena} arena`}>
+              <div className="flex items-center gap-2 rounded-full border border-gold/40 bg-gold/10 px-3.5 min-h-10" aria-label={`${user.trophies} trophies, ${user.arena} arena`}>
                 <Trophy size={18} className="text-gold" aria-hidden />
-                <span className="tabular font-semibold">{user.trophies}</span>
+                <span className="tabular font-display text-xl font-bold">{user.trophies}</span>
                 <span className="text-muted hidden sm:inline">{user.arena}</span>
               </div>
             )}
@@ -138,7 +144,7 @@ export function AppShell() {
             </button>
           </div>
         )}
-        <nav className="md:hidden fixed bottom-0 inset-x-0 border-t border-border bg-card grid grid-cols-5 z-40" aria-label="Main">
+        <nav className="md:hidden fixed bottom-0 inset-x-0 border-t border-border glass grid grid-cols-5 z-40" aria-label="Main">
           {mobile.map((l) => (
             <NavLink
               key={l.to}

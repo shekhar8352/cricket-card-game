@@ -38,11 +38,11 @@ function BowlMark({ type }: { type: Card['bowlType'] }) {
 function Front({ card, size, status }: { card: Card; size: keyof typeof widths; status?: string }) {
   const bowl = card.bowlType === 'spin' ? 'Spin' : 'Pace'
   return (
-    <span className="game-card-face game-card-front" style={{ boxShadow: `inset 0 0 0 3px ${frames[card.rarity]}` }}>
+    <span className={cn('game-card-face game-card-front', `rarity-${card.rarity}`)} style={{ boxShadow: `inset 0 0 0 3px ${frames[card.rarity]}, inset 0 0 0 5px rgba(0,0,0,0.35)` }}>
       <span className="flex items-start justify-between gap-1 p-2">
         <span
           className="grid place-items-center min-w-9 h-9 px-1 rounded-lg font-display text-xl font-bold leading-none tabular text-white"
-          style={{ background: shields[card.rarity] }}
+          style={{ background: `linear-gradient(180deg, ${frames[card.rarity]}, ${shields[card.rarity]})`, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}
         >
           {card.overall}
           <span className="sr-only">overall</span>
@@ -52,9 +52,9 @@ function Front({ card, size, status }: { card: Card; size: keyof typeof widths; 
         </span>
       </span>
       <span className={cn(
-        'mx-auto grid place-items-center rounded-full border border-white/25 bg-white/10 font-display font-bold',
+        'mx-auto grid place-items-center rounded-full border-2 font-display font-bold shadow-[0_6px_16px_rgba(0,0,0,0.4)]',
         size === 'lg' ? 'w-24 h-24 text-4xl' : size === 'md' ? 'w-16 h-16 text-2xl' : 'w-10 h-10 text-sm',
-      )}>
+      )} style={{ borderColor: frames[card.rarity], background: 'radial-gradient(circle at 35% 30%, rgba(255,255,255,0.3), rgba(255,255,255,0.05) 60%)' }}>
         <span aria-hidden>{initials(card.name)}</span>
       </span>
       <span className="mt-auto p-2">
@@ -130,6 +130,8 @@ export function PlayerCard({
     onClick && 'cursor-pointer',
     widths[size],
     selected && 'is-selected',
+    card && !hidden && card.rarity === 'Legend' && 'is-legend',
+    card && !hidden && card.rarity === 'Gold' && 'is-gold',
     className,
   )
   const inner = (

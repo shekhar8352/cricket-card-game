@@ -6,7 +6,8 @@ import App from './App'
 import './index.css'
 
 const theme = localStorage.getItem('ccg_theme')
-if (theme === 'dark') document.documentElement.classList.add('dark')
+// Night-match look is the default; players can switch to day mode.
+if (theme !== 'light') document.documentElement.classList.add('dark')
 
 const qc = new QueryClient()
 
