@@ -1,4 +1,6 @@
-import type { Role } from '../types/engine'
+import type { Rarity, Role } from '../types/engine'
+
+export const RARITY_RING: Record<Rarity, string> = { Bronze: '#e8c99b', Silver: '#e5e7eb', Gold: '#f6c445', Legend: '#c4b5fd' }
 
 export const SQUAD_SLOTS: { role: Role; label: string }[] = [
   { role: 'BAT', label: 'Batter 1' },

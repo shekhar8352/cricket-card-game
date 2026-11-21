@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api, setToken } from '../../api/client'
 import { useUI } from '../../store/ui'
-import { Trophy, Home, Play, Layers, Dumbbell, Medal, History, Users, Moon, Sun, LogOut, Menu } from 'lucide-react'
+import { Trophy, Home, Play, Layers, Dumbbell, Medal, History, Users, Moon, Sun, LogOut, Menu, UserRound, BookOpen } from 'lucide-react'
 import { cn } from '../../lib/cn'
 import { Brand } from '../ui/chrome'
 
@@ -28,7 +28,12 @@ const groups = [
     links: [
       { to: '/leaderboard', label: 'Leaderboard', icon: Medal },
       { to: '/history', label: 'History', icon: History },
+      { to: '/account', label: 'Account', icon: UserRound },
     ],
+  },
+  {
+    label: 'Learn',
+    links: [{ to: '/engine', label: 'How it works', icon: BookOpen }],
   },
 ]
 
@@ -40,6 +45,8 @@ const mobile = [
 ]
 
 const moreLinks = [
+  { to: '/account', label: 'Account', icon: UserRound },
+  { to: '/engine', label: 'How it works', icon: BookOpen },
   { to: '/training', label: 'Training', icon: Dumbbell },
   { to: '/leaderboard', label: 'Leaderboard', icon: Medal },
   { to: '/history', label: 'History', icon: History },
@@ -95,7 +102,12 @@ export function AppShell() {
           ))}
         </nav>
         <div className="p-3 border-t border-border space-y-1">
-          {user && <div className="px-3 py-2 text-sm text-muted truncate">{user.username}</div>}
+          {user && (
+            <NavLink to="/account" className={itemClass(false)} aria-label={`${user.username}, open your account`}>
+              <span className="grid place-items-center w-7 h-7 rounded-lg bg-gradient-to-br from-cta to-cta-2 font-display text-sm font-bold text-cta-fg" aria-hidden>{user.username.slice(0, 2).toUpperCase()}</span>
+              <span className="truncate">{user.username}</span>
+            </NavLink>
+          )}
           <button type="button" onClick={toggleTheme} className={itemClass(false) + ' w-full'}>
             {theme === 'dark' ? <Sun size={18} aria-hidden /> : <Moon size={18} aria-hidden />}
             {theme === 'dark' ? 'Light mode' : 'Dark mode'}
@@ -112,11 +124,11 @@ export function AppShell() {
           <div className="md:hidden"><Brand /></div>
           <div className="flex items-center gap-2 ml-auto">
             {user && (
-              <div className="flex items-center gap-2 rounded-full border border-gold/40 bg-gold/10 px-3.5 min-h-10" aria-label={`${user.trophies} trophies, ${user.arena} arena`}>
+              <NavLink to="/account" className="flex items-center gap-2 rounded-full border border-gold/40 bg-gold/10 px-3.5 min-h-10 hover:bg-gold/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent" aria-label={`${user.trophies} trophies, ${user.arena} arena. Open your account`}>
                 <Trophy size={18} className="text-gold" aria-hidden />
                 <span className="tabular font-display text-xl font-bold">{user.trophies}</span>
                 <span className="text-muted hidden sm:inline">{user.arena}</span>
-              </div>
+              </NavLink>
             )}
             <button type="button" onClick={toggleTheme} className="md:hidden inline-flex items-center justify-center w-11 h-11 rounded-xl cursor-pointer hover:bg-black/5 dark:hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent" aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
               {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
