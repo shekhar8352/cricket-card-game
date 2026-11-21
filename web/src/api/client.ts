@@ -1,6 +1,9 @@
-import type { LeaderRow, MatchDTO, PlayerCard, User } from '../types/engine'
+import type { AccountStats, EngineModel, LeaderRow, MatchDTO, OddsRequest, OddsResult, PlayerCard, Tactics, User } from '../types/engine'
 
 const TOKEN_KEY = 'ccg_token'
+
+/** Backend origin. The browser calls the Go API directly (no Vite proxy). */
+export const API_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000').replace(/\/$/, '')
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY)
@@ -15,7 +18,7 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   headers.set('Content-Type', 'application/json')
   const tok = getToken()
   if (tok) headers.set('Authorization', `Bearer ${tok}`)
-  const res = await fetch(`/api${path}`, { ...init, headers })
+  const res = await fetch(`${API_URL}${path}`, { ...init, headers })
   if (res.status === 401) {
     setToken(null)
     if (!path.startsWith('/auth')) window.location.href = '/auth'
@@ -37,6 +40,9 @@ export const api = {
       method: 'POST', body: JSON.stringify({ username, password }),
     }),
   me: () => req<{ user: User }>('/me'),
+  myStats: () => req<AccountStats>('/me/stats'),
+  engineModel: () => req<EngineModel>('/engine/model'),
+  engineOdds: (body: OddsRequest) => req<OddsResult>('/engine/odds', { method: 'POST', body: JSON.stringify(body) }),
   cards: () => req<PlayerCard[]>('/cards'),
   train: (id: string, sacrificeIds: string[]) =>
     req<{ card: PlayerCard; xpGained: number }>(`/cards/${id}/train`, {
@@ -49,13 +55,12 @@ export const api = {
     req<MatchDTO>('/matches', { method: 'POST', body: JSON.stringify({ mode }) }),
   match: (id: string) => req<MatchDTO>(`/matches/${id}`),
   matches: () => req<MatchDTO[]>('/matches'),
-  lockLineup: (id: string, body: { cardIds: string[]; battingOrder: string[]; bowlingPlan: string[]; tossPref: string }) =>
+  lockLineup: (id: string, body: { cardIds: string[]; battingOrder: string[]; bowlingPlan: string[]; tossPref: string; tactics: Tactics }) =>
     req<MatchDTO>(`/matches/${id}/lineup`, { method: 'POST', body: JSON.stringify(body) }),
   leaderboard: (arena?: string) => req<LeaderRow[]>(`/leaderboard${arena ? `?arena=${arena}` : ''}`),
   traits: () => req<{ code: string; name: string; description: string }[]>('/traits'),
 }
 
 export function liveUrl(matchId: string) {
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-  return `${proto}://${location.host}/api/matches/${matchId}/live`
+  return `${API_URL.replace(/^http/, 'ws')}/matches/${matchId}/live`
 }

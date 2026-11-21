@@ -12,6 +12,9 @@ import { TrainingPage } from './pages/Training'
 import { LeaderboardPage } from './pages/Leaderboard'
 import { HistoryPage } from './pages/History'
 import { SquadPage } from './pages/Squad'
+import { AccountPage } from './pages/Account'
+import { EnginePage } from './pages/Engine'
+import { PublicShell } from './components/layout/PublicShell'
 import type { ReactNode } from 'react'
 
 function Guard({ children }: { children: ReactNode }) {
@@ -23,6 +26,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/auth" element={<AuthPage />} />
+      <Route path="/how-it-works" element={getToken() ? <Navigate to="/engine" replace /> : <PublicShell><EnginePage /></PublicShell>} />
       <Route
         element={
           <Guard>
@@ -37,6 +41,8 @@ export default function App() {
         <Route path="/training" element={<TrainingPage />} />
         <Route path="/leaderboard" element={<LeaderboardPage />} />
         <Route path="/history" element={<HistoryPage />} />
+        <Route path="/account" element={<AccountPage />} />
+        <Route path="/engine" element={<EnginePage />} />
         <Route path="/match/:id/lineup" element={<LineupPage />} />
         <Route path="/match/:id/live" element={<LiveMatchPage />} />
         <Route path="/match/:id/result" element={<ResultPage />} />
