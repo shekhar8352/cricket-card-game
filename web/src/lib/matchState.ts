@@ -6,8 +6,8 @@ export const MAX_BALLS = OVERS * BALLS_PER_OVER
 export const MAX_WICKETS = 6
 /** Rough runs-per-ball for an average lineup in this engine, used for projections. */
 const RUNS_PER_BALL = 1.4
-/** Typical first-innings total for two average sides. */
-export const PAR_SCORE = 42
+/** Typical first-innings total for two average sides on a balanced pitch (engine-measured). */
+export const PAR_SCORE = 45
 
 export interface BatLine {
   id: string
@@ -64,6 +64,8 @@ export interface LiveState {
   projected?: number
   /** Probability (0–1) that the side currently batting wins. */
   battingWinProb: number
+  /** Par first-innings score for this pitch. */
+  par: number
 }
 
 export function oversText(legalBalls: number) {
@@ -175,7 +177,7 @@ function resources(ballsLeft: number, wicketsLeft: number) {
   return ballsLeft * RUNS_PER_BALL * wicketFactor
 }
 
-export function computeLive(shown: BallEvent[]): LiveState {
+export function computeLive(shown: BallEvent[], par: number = PAR_SCORE): LiveState {
   const first = emptyInnings(0)
   let second: InningsState | undefined
   for (const b of shown) {
@@ -195,8 +197,8 @@ export function computeLive(shown: BallEvent[]): LiveState {
     const projected = Math.round(first.runs + (ballsLeft > 0 && wicketsLeft > 0 ? resources(ballsLeft, wicketsLeft) : 0))
     const spread = 6 + Math.sqrt(ballsLeft) * 1.4
     return {
-      current, first, now, ballsLeft, crr, projected,
-      battingWinProb: shown.length === 0 ? 0.5 : sigmoid((projected - PAR_SCORE) / spread),
+      current, first, now, ballsLeft, crr, projected, par,
+      battingWinProb: shown.length === 0 ? 0.5 : sigmoid((projected - par) / spread),
     }
   }
 
@@ -210,7 +212,7 @@ export function computeLive(shown: BallEvent[]): LiveState {
     const expected = resources(ballsLeft, wicketsLeft)
     prob = sigmoid((expected - needed) / (2 + Math.sqrt(ballsLeft) * 1.5))
   }
-  return { current, first, second, now, target, needed, rrr, ballsLeft, crr, battingWinProb: prob }
+  return { current, first, second, now, target, needed, rrr, ballsLeft, crr, par, battingWinProb: prob }
 }
 
 export interface Situation {
@@ -276,7 +278,7 @@ export function situation(state: LiveState, shown: BallEvent[], name: (id: strin
     for (let i = recent.length - 1; i >= 0 && recent[i].legal && recent[i].runs === 0 && !recent[i].dismissal; i--) n++
     return n
   })()
-  if (dots >= 3) return { tone: 'bad', headline: `${dots} dot balls in a row`, detail: `${bowlingTeam} are squeezing ${battingTeam}.` }
+  if (dots >= 3) return { tone: 'bad', headline: `${dots} dot balls in a row`, detail: `Pressure is building: every extra dot raises the chance of a wicket.` }
 
   // Default: the equation
   if (state.second) {
@@ -288,11 +290,12 @@ export function situation(state: LiveState, shown: BallEvent[], name: (id: strin
     return { tone: 'neutral', headline: `${battingTeam} need ${need} from ${left} balls`, detail: `Required rate ${rrr.toFixed(2)}. ${detail}` }
   }
   const proj = state.projected ?? inn.runs
-  const vsPar = proj - PAR_SCORE
+  const par = state.par
+  const vsPar = proj - par
   return {
     tone: vsPar > 5 ? 'good' : vsPar < -5 ? 'bad' : 'neutral',
     headline: `${battingTeam} heading for about ${proj}`,
-    detail: vsPar > 5 ? `That’s above par (${PAR_SCORE}). ${bowlingTeam} need to hit back.` : vsPar < -5 ? `Below par (${PAR_SCORE}). ${battingTeam} need a big over.` : `Right around par (${PAR_SCORE}).`,
+    detail: vsPar > 5 ? `That’s above par (${par}) for this pitch. ${bowlingTeam} need to hit back.` : vsPar < -5 ? `Below par (${par}) for this pitch. ${battingTeam} need a big over.` : `Right around par (${par}) for this pitch.`,
   }
 }
 

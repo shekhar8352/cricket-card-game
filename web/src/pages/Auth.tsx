@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api, setToken } from '../api/client'
 import { Button } from '../components/ui/button'
 import { Brand, controlClass } from '../components/ui/chrome'
@@ -107,6 +107,7 @@ export function AuthPage() {
           <Button className="w-full mt-6 min-h-13 text-xl" type="submit" disabled={busy}>
             {busy ? 'Please wait…' : tab === 'login' ? 'Sign in & play' : 'Claim my starter pack'}
           </Button>
+          <p className="text-sm text-muted text-center mt-4">Curious how matches are decided? <Link to="/how-it-works" className="underline font-semibold text-fg">See exactly how the engine works</Link></p>
         </form>
       </main>
     </div>
