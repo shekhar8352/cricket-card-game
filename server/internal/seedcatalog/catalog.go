@@ -198,23 +198,6 @@ var rawPlayers = []Raw{
 	{"tabraiz-shamsi", "Tabraiz Shamsi", "SA", engine.RoleBOWL, engine.HandRight, engine.BowlSpin, engine.RaritySilver, []string{"Mystery Spinner"}, 26, 20, 78, 76, 8},
 	{"gerald-coetzee", "Gerald Coetzee", "SA", engine.RoleBOWL, engine.HandRight, engine.BowlPace, engine.RarityBronze, nil, 28, 26, 72, 74, 8},
 
-	// Pakistan
-	{"babar-azam", "Babar Azam", "PAK", engine.RoleBAT, engine.HandRight, engine.BowlPace, engine.RarityLegend, []string{"Anchor"}, 90, 80, 26, 16, 8},
-	{"mohammad-rizwan", "Mohammad Rizwan", "PAK", engine.RoleWK, engine.HandRight, engine.BowlPace, engine.RarityLegend, []string{"Anchor"}, 84, 74, 16, 10, 86},
-	{"fakhar-zaman", "Fakhar Zaman", "PAK", engine.RoleBAT, engine.HandLeft, engine.BowlPace, engine.RarityGold, []string{"Powerplay Hitter"}, 76, 84, 22, 14, 8},
-	{"saim-ayub", "Saim Ayub", "PAK", engine.RoleBAT, engine.HandLeft, engine.BowlPace, engine.RaritySilver, nil, 74, 80, 28, 22, 8},
-	{"imam-ul-haq", "Imam-ul-Haq", "PAK", engine.RoleBAT, engine.HandLeft, engine.BowlPace, engine.RaritySilver, []string{"Anchor"}, 80, 68, 20, 12, 8},
-	{"saud-shakeel", "Saud Shakeel", "PAK", engine.RoleBAT, engine.HandLeft, engine.BowlPace, engine.RaritySilver, nil, 82, 66, 24, 16, 8},
-	{"sarfaraz-ahmed", "Sarfaraz Ahmed", "PAK", engine.RoleWK, engine.HandRight, engine.BowlPace, engine.RaritySilver, []string{"Keeper-Captain"}, 70, 64, 16, 10, 84},
-	{"shadab-khan", "Shadab Khan", "PAK", engine.RoleAR, engine.HandRight, engine.BowlSpin, engine.RarityGold, nil, 68, 74, 76, 74, 8},
-	{"imad-wasim", "Imad Wasim", "PAK", engine.RoleAR, engine.HandLeft, engine.BowlSpin, engine.RaritySilver, nil, 64, 66, 78, 68, 8},
-	{"shaheen-afridi", "Shaheen Afridi", "PAK", engine.RoleBOWL, engine.HandLeft, engine.BowlPace, engine.RarityLegend, []string{"Strike Bowler", "Yorker King"}, 32, 30, 86, 88, 8},
-	{"haris-rauf", "Haris Rauf", "PAK", engine.RoleBOWL, engine.HandRight, engine.BowlPace, engine.RarityGold, []string{"Death Specialist"}, 28, 24, 78, 82, 8},
-	{"naseem-shah", "Naseem Shah", "PAK", engine.RoleBOWL, engine.HandRight, engine.BowlPace, engine.RarityGold, nil, 30, 26, 80, 80, 8},
-	{"abrar-ahmed", "Abrar Ahmed", "PAK", engine.RoleBOWL, engine.HandRight, engine.BowlSpin, engine.RaritySilver, []string{"Mystery Spinner"}, 26, 20, 78, 74, 8},
-	{"shaheen-wasim", "Mohammad Wasim", "PAK", engine.RoleBOWL, engine.HandRight, engine.BowlPace, engine.RarityBronze, nil, 28, 26, 70, 72, 8},
-	{"usama-mir", "Usama Mir", "PAK", engine.RoleBOWL, engine.HandRight, engine.BowlSpin, engine.RarityBronze, nil, 26, 22, 72, 70, 8},
-
 	// Sri Lanka
 	{"kusal-mendis", "Kusal Mendis", "SL", engine.RoleWK, engine.HandRight, engine.BowlPace, engine.RarityGold, nil, 78, 76, 16, 10, 80},
 	{"pathum-nissanka", "Pathum Nissanka", "SL", engine.RoleBAT, engine.HandRight, engine.BowlPace, engine.RarityGold, []string{"Anchor"}, 82, 74, 20, 12, 8},
@@ -290,9 +273,6 @@ var rawPlayers = []Raw{
 	{"adam-milne", "Adam Milne", "NZ", engine.RoleBOWL, engine.HandRight, engine.BowlPace, engine.RarityBronze, nil, 26, 22, 70, 76, 8},
 	{"reeza-hendricks", "Reeza Hendricks", "SA", engine.RoleBAT, engine.HandRight, engine.BowlPace, engine.RarityBronze, nil, 74, 70, 20, 12, 8},
 	{"andile-phehlukwayo", "Andile Phehlukwayo", "SA", engine.RoleAR, engine.HandLeft, engine.BowlPace, engine.RarityBronze, nil, 58, 66, 66, 62, 8},
-	{"imam-fakhar", "Abdullah Shafique", "PAK", engine.RoleBAT, engine.HandRight, engine.BowlPace, engine.RaritySilver, []string{"Anchor"}, 78, 68, 20, 12, 8},
-	{"ifti-ahmed", "Iftikhar Ahmed", "PAK", engine.RoleAR, engine.HandRight, engine.BowlSpin, engine.RarityBronze, []string{"Finisher"}, 62, 76, 58, 54, 8},
-	{"hasan-ali", "Hasan Ali", "PAK", engine.RoleBOWL, engine.HandRight, engine.BowlPace, engine.RarityBronze, []string{"Death Specialist"}, 30, 32, 70, 72, 8},
 	{"kusal-perera-wk", "Dinesh Chandimal", "SL", engine.RoleWK, engine.HandRight, engine.BowlPace, engine.RarityBronze, nil, 70, 64, 14, 10, 74},
 	{"dhananjaya-de-silva", "Dhananjaya de Silva", "SL", engine.RoleAR, engine.HandRight, engine.BowlSpin, engine.RaritySilver, nil, 72, 68, 68, 62, 8},
 	{"rovel-brathwaite", "Kyle Mayers", "WI", engine.RoleAR, engine.HandLeft, engine.BowlPace, engine.RarityBronze, []string{"Powerplay Hitter"}, 66, 80, 58, 54, 8},
