@@ -45,6 +45,114 @@ export interface PlayerCard {
   overall: number
   traits: string[]
   createdAt?: string
+  /** Match-rating history; absent until the card has played. */
+  form?: CardForm
+  captaincy?: Captaincy
+  captainRep?: number
+  partners?: string[] | null
+}
+
+export interface Captaincy {
+  aggression: number
+  tactics: number
+  calm: number
+  flair: number
+  masterstroke: string
+}
+
+export interface MasterstrokeDef {
+  code: string
+  name: string
+  description: string
+  side: 'bat' | 'bowl'
+  trigger: string
+  effect: WeightDelta
+  noPressure?: boolean
+  earlyPress?: boolean
+  tempBoost?: number
+}
+
+export interface ConditionsDef {
+  code: string
+  name: string
+  description: string
+  chance: number
+  paceBonus: number
+  spinBonus: number
+  batterBonus: number
+  catchDrop: number
+  seamEdges: number
+}
+
+export interface BreakCallDef {
+  code: string
+  side: 'chase' | 'defend'
+  name: string
+  description: string
+  bias: number[]
+}
+
+export interface SuperOverPicks {
+  batters: string[]
+  bowler: string
+}
+
+export interface MatchPause {
+  kind: 'break' | 'super_over'
+  deadline?: string | null
+  role: 'chase' | 'defend'
+  target: number
+  conditions: ConditionsDef
+  options?: BreakCallDef[]
+  suggested?: string
+  decided: boolean
+  yourCall?: string
+  opponentDecided: boolean
+  suggestedPicks?: SuperOverPicks
+}
+
+export interface OpponentCaptain {
+  cardId: string
+  name: string
+  rarity: Rarity
+  country: string
+  role: Role
+  captaincy: Captaincy
+  captainRep: number
+  masterstroke: MasterstrokeDef
+}
+
+export interface Rivalry {
+  bowler: string
+  batter: string
+  balls: number
+  runs: number
+  dismissals: number
+}
+
+export interface OverCall {
+  over: number
+  approach: Approach
+  field: FieldPlan
+  batRead: boolean
+  fieldRead: boolean
+  masterstroke?: string
+  masterstrokeBy?: 'bat' | 'bowl'
+}
+
+export interface ResultExtras {
+  streak?: Record<string, number>
+  streakBonus?: Record<string, number>
+  reads?: Record<string, number>
+  repGained?: Record<string, number>
+  boosted?: Record<string, boolean>
+}
+
+export interface CardForm {
+  avg: number
+  matches: number
+  best: number
+  recent: number[] // last 5, oldest first
 }
 
 export interface Shot {
@@ -78,6 +186,12 @@ export interface BallEvent {
   pressure?: number
   matchup?: string
   counter?: string
+  powerplay?: boolean
+  freeHit?: boolean
+  masterstroke?: string
+  masterstrokeBy?: 'bat' | 'bowl'
+  chemistry?: number
+  rivalry?: boolean
   score: number
   wickets: number
 }
@@ -99,7 +213,15 @@ export interface MatchDTO {
   homeLineup?: LineupDTO
   awayLineup?: LineupDTO
   pitch?: PitchDef
-  opponentStyle?: BotStyle | null
+  opponentCaptain?: OpponentCaptain | null
+  pause?: MatchPause | null
+  rivalries?: Rivalry[] | null
+  /** Match rating (3.0–10.0) for every card in a finished match. */
+  ratings?: Record<string, number> | null
+  /** XP each of your cards earned from this match. */
+  xpEarned?: Record<string, number> | null
+  /** In a player-vs-player match: when your lineup will be auto-locked with your default. */
+  lineupDeadline?: string | null
   toss?: { winnerSide: string; decision: string }
   result?: {
     innings: InningsResult[]
@@ -108,6 +230,15 @@ export interface MatchDTO {
     margin: string
     playerOfMatch: string
     pitch?: Pitch
+    conditions?: string
+    breakCalls?: Record<string, string>
+    superOver?: {
+      innings: InningsResult[]
+      picks: Record<string, SuperOverPicks>
+      winner: string
+      decider: string
+    }
+    extras?: ResultExtras
   }
   ballLog?: BallEvent[]
   trophyDeltaHome?: number
@@ -132,6 +263,7 @@ export interface InningsResult {
   batters: { cardId: string; runs: number; balls: number; fours: number; sixes: number; dismissal?: { text: string }; notOut: boolean }[]
   bowlers: { cardId: string; overs: number; balls: number; runs: number; wickets: number }[]
   fielders: { cardId: string; catches: number; stumpings: number; runOuts: number; drops: number; runsSaved: number; isKeeper: boolean }[]
+  calls?: OverCall[]
 }
 
 export interface LeaderRow {
@@ -150,6 +282,7 @@ export interface StatPlayer {
   role: Role
   rarity: Rarity
   matches: number
+  avgRating: number
 }
 
 export interface TeamScore {
@@ -195,6 +328,7 @@ export interface AccountStats {
     bowling: (StatPlayer & { innings: number; balls: number; runs: number; wickets: number; bestWickets: number; bestRuns: number; economy: number; average: number })[]
     fielding: (StatPlayer & { catches: number; stumpings: number; runOuts: number; total: number })[]
     playerOfMatch: (StatPlayer & { awards: number })[]
+    rated: (StatPlayer & { bestRating: number })[]
   }
 }
 
@@ -213,7 +347,7 @@ export interface LineupDTO {
   battingOrder?: string[]
   bowlingPlan?: string[]
   tossPref?: string
-  tactics?: Tactics
+  captainId?: string
 }
 
 export interface PitchDef {
@@ -229,12 +363,6 @@ export interface PitchDef {
   par: number
 }
 
-export interface BotStyle {
-  code: string
-  name: string
-  description: string
-  tactics: Tactics
-}
 
 export interface WeightDelta {
   dot: number
@@ -258,7 +386,6 @@ export interface EngineModel {
   pressure: { startsAt: number; max: number }
   matchup: { weakBelow: number; strongAtLeast: number; weakEffect: WeightDelta; strongEffect: WeightDelta }
   traits: { code: string; name: string; description: string }[]
-  botStyles: BotStyle[]
   arenas: { Name: string; MinTrophy: number }[]
   progression: {
     rewardCardsPerWin: number
@@ -267,7 +394,91 @@ export interface EngineModel {
     xpPerLevel: number
     levelBonus: number
     levelCaps: Record<Rarity, number>
+    performanceXP: { min: number; perPoint: number; fromRating: number }
+    sacrificeXP: Record<Rarity, { other: number; samePlayer: number }>
+    maxSacrifices: number
   }
+  ratings: RatingRules
+  captain: CaptainRules
+  masterstrokes: MasterstrokeDef[]
+  breakCalls: BreakCallDef[]
+  conditions: ConditionsDef[]
+  chemistry: ChemistryRules
+  powerplay: { overs: number; effect: WeightDelta; defendFieldScale: number; boundarySaves: boolean }
+  freeHit: WeightDelta
+  rival: { dismissals: number; effect: WeightDelta }
+  superOver: { batters: number; wickets: number; graceSeconds: number }
+  pause: { breakGraceSeconds: number; lineupGraceSeconds: number }
+  streak: { bonus: Record<string, number>; boostAt: number }
+  reputation: { perMatch: number; perWin: number; readsPerPoint: number; max: number; perTactics: number; maxTactics: number }
+}
+
+export interface CaptainRules {
+  aggressionDivisor: number
+  readBonus: number
+  tempBase: number
+  tempFlairDivisor: number
+  tempTacticsDivisor: number
+  tempMin: number
+  judgementBase: number
+  judgementScale: number
+  repPerTactics: number
+  repMaxBonus: number
+  calmDivisor: number
+  armbandTemperament: number
+  readTheBattersBonus: number
+}
+
+export interface ChemistryRules {
+  sameCountry: number
+  knownPartnership: number
+  maxLink: number
+  singlesPerLink: number
+  dotsPerLink: number
+  runUpgradePerLink: number
+  runOutCutPerLink: number
+}
+
+export interface Streak {
+  current: number
+  nextWinBonus: number
+  boostAt: number
+  nextWinBoosted: boolean
+}
+
+export interface RatingRules {
+  base: number
+  min: number
+  max: number
+  parRunsPerBall: number
+  batPerRunAbovePar: number
+  batPerRun: number
+  duck: number
+  cheapDismissal: number
+  cheapBelow: number
+  notOutBonus: number
+  notOutMinRuns: number
+  bowlPerWicket: number
+  bowlPerRunBelowPar: number
+  catch: number
+  stumping: number
+  runOut: number
+  drop: number
+  save: number
+  win: number
+  playerOfMatch: number
+}
+
+export interface TrainResult {
+  xpGained: number
+  levelBefore: number
+  levelAfter: number
+  xpAfter: number
+  xpToNext: number
+  wasted: number
+  overallBefore: number
+  overallAfter: number
+  levelCap: number
 }
 
 export interface OddsRequest {

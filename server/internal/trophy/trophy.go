@@ -62,3 +62,21 @@ func Apply(trophies, delta int) int {
 func Band(trophies int) string {
 	return ArenaFor(trophies).Name
 }
+
+// StreakBonus is the extra trophies for a win that extends a streak to n wins.
+func StreakBonus(n int) int {
+	switch {
+	case n >= 5:
+		return 8
+	case n == 4:
+		return 6
+	case n == 3:
+		return 4
+	case n == 2:
+		return 2
+	}
+	return 0
+}
+
+// StreakBoostAt is the streak length from which one reward card uses the next arena's odds.
+const StreakBoostAt = 3
