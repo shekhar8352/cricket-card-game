@@ -1,4 +1,13 @@
-import type { AccountStats, EngineModel, LeaderRow, MatchDTO, OddsRequest, OddsResult, PlayerCard, Tactics, User } from '../types/engine'
+import type { SavedDefault } from '../lib/plan'
+import type { AccountStats, EngineModel, LeaderRow, MatchDTO, OddsRequest, OddsResult, PlayerCard, Streak, SuperOverPicks, TrainResult, User } from '../types/engine'
+
+/** Before a match the player picks only the seven, the captain and the orders. */
+export interface LineupBody {
+  cardIds: string[]
+  battingOrder: string[]
+  bowlingPlan: string[]
+  captainId: string
+}
 
 const TOKEN_KEY = 'ccg_token'
 
@@ -39,23 +48,31 @@ export const api = {
     req<{ token: string; user: User }>('/auth/login', {
       method: 'POST', body: JSON.stringify({ username, password }),
     }),
-  me: () => req<{ user: User }>('/me'),
+  me: () => req<{ user: User; streak?: Streak }>('/me'),
+  submitBreak: (id: string, body: { call: string; battingOrder?: string[]; bowlingPlan?: string[] }) =>
+    req<MatchDTO>(`/matches/${id}/break`, { method: 'POST', body: JSON.stringify(body) }),
+  submitSuperOver: (id: string, body: SuperOverPicks | Record<string, never>) =>
+    req<MatchDTO>(`/matches/${id}/superover`, { method: 'POST', body: JSON.stringify(body) }),
   myStats: () => req<AccountStats>('/me/stats'),
   engineModel: () => req<EngineModel>('/engine/model'),
   engineOdds: (body: OddsRequest) => req<OddsResult>('/engine/odds', { method: 'POST', body: JSON.stringify(body) }),
   cards: () => req<PlayerCard[]>('/cards'),
   train: (id: string, sacrificeIds: string[]) =>
-    req<{ card: PlayerCard; xpGained: number }>(`/cards/${id}/train`, {
+    req<{ card: PlayerCard; result: TrainResult; xpGained: number }>(`/cards/${id}/train`, {
       method: 'POST', body: JSON.stringify({ sacrificeIds }),
     }),
-  squad: () => req<{ cardIds: string[]; battingOrder: string[]; bowlingPlan: string[] }>('/squad'),
-  saveSquad: (body: { cardIds: string[]; battingOrder: string[]; bowlingPlan: string[] }) =>
-    req('/squad', { method: 'PUT', body: JSON.stringify(body) }),
+  previewTraining: (id: string, sacrificeIds: string[]) =>
+    req<{ result: TrainResult; xpGained: number }>(`/cards/${id}/train`, {
+      method: 'POST', body: JSON.stringify({ sacrificeIds, dryRun: true }),
+    }),
+  squad: () => req<SavedDefault>('/squad'),
+  saveSquad: (body: LineupBody) =>
+    req<{ ok: string }>('/squad', { method: 'PUT', body: JSON.stringify(body) }),
   createMatch: (mode: 'bot' | 'pvp') =>
     req<MatchDTO>('/matches', { method: 'POST', body: JSON.stringify({ mode }) }),
   match: (id: string) => req<MatchDTO>(`/matches/${id}`),
   matches: () => req<MatchDTO[]>('/matches'),
-  lockLineup: (id: string, body: { cardIds: string[]; battingOrder: string[]; bowlingPlan: string[]; tossPref: string; tactics: Tactics }) =>
+  lockLineup: (id: string, body: LineupBody) =>
     req<MatchDTO>(`/matches/${id}/lineup`, { method: 'POST', body: JSON.stringify(body) }),
   leaderboard: (arena?: string) => req<LeaderRow[]>(`/leaderboard${arena ? `?arena=${arena}` : ''}`),
   traits: () => req<{ code: string; name: string; description: string }[]>('/traits'),

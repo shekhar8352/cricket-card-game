@@ -122,29 +122,76 @@ body {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
 }
 
-.game-card-front.rarity-Bronze {
+/* ---------- FIFA-style player card ---------- */
+
+.game-card-lift { container-type: inline-size; }
+
+.pc {
+  /* 16em spans the card width, so the whole layout scales with it */
+  font-size: 6.25cqw;
+  color: var(--ink);
+  box-shadow: inset 0 0 0 0.18em var(--frame), inset 0 0 0 0.32em rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.pc-rays {
+  position: absolute;
+  inset: 0;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.12), transparent 30%),
-    linear-gradient(160deg, #5a3a1a, #2a1a0c 70%);
+    radial-gradient(ellipse 70% 45% at 70% 28%, rgba(255, 255, 255, 0.45), transparent 70%),
+    repeating-conic-gradient(from 200deg at 70% 30%, rgba(255, 255, 255, 0.09) 0deg 6deg, transparent 6deg 14deg);
+  mask-image: linear-gradient(180deg, #000 55%, transparent 80%);
+  pointer-events: none;
+}
+
+.pc-rule { height: 0.08em; background: var(--ink); opacity: 0.35; border-radius: 1em; }
+.pc-divider { border-color: color-mix(in srgb, var(--ink) 30%, transparent); border-right-width: 0.08em; }
+.pc-hot { color: var(--hot); }
+.pc-name { text-shadow: 0 0.06em 0 rgba(255, 255, 255, 0.25); }
+.pc-chip {
+  padding: 0.15em 0.5em;
+  border-radius: 0.5em;
+  background: color-mix(in srgb, var(--ink) 14%, transparent);
+  max-width: 100%;
+}
+
+.game-card-front.rarity-Bronze {
+  --ink: #2e1806;
+  --hot: #7a2e00;
+  --frame: #f3c89a;
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.35), transparent 35%),
+    linear-gradient(135deg, #e8b27c 0%, #b9773f 38%, #e2a96f 62%, #8a5326 100%);
 }
 
 .game-card-front.rarity-Silver {
+  --ink: #111827;
+  --hot: #0b5d3b;
+  --frame: #f8fafc;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.16), transparent 32%),
-    linear-gradient(160deg, #4a5565, #1c232d 70%);
+    linear-gradient(160deg, rgba(255, 255, 255, 0.55), transparent 38%),
+    linear-gradient(135deg, #f1f5f9 0%, #a7b0bb 40%, #e5e9ee 62%, #7b8592 100%);
 }
 
 .game-card-front.rarity-Gold {
+  --ink: #2a1c00;
+  --hot: #8a1c00;
+  --frame: #fff1b8;
   background:
-    radial-gradient(circle at 50% 38%, rgba(255, 214, 102, 0.35), transparent 55%),
-    linear-gradient(160deg, #6b4a06, #2a1c02 72%);
+    linear-gradient(160deg, rgba(255, 255, 255, 0.5), transparent 36%),
+    linear-gradient(135deg, #fff0b0 0%, #e2b22c 36%, #fbe08a 60%, #a97a07 100%);
 }
 
 .game-card-front.rarity-Legend {
+  --ink: #fde68a;
+  --hot: #ffffff;
+  --frame: #d4af37;
   background:
-    radial-gradient(circle at 50% 38%, rgba(196, 165, 255, 0.4), transparent 55%),
-    linear-gradient(160deg, #3b1d78, #120826 72%);
+    radial-gradient(ellipse 80% 50% at 70% 25%, rgba(167, 139, 250, 0.55), transparent 70%),
+    linear-gradient(150deg, #2a1360 0%, #120826 55%, #3b1d78 100%);
 }
+
+.game-card-front.rarity-Legend .pc-name { text-shadow: 0 0 0.6em rgba(253, 230, 138, 0.45); }
 
 .game-card-front.rarity-Gold::before,
 .game-card-front.rarity-Legend::before {

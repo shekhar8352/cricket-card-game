@@ -4,6 +4,11 @@ import { X } from 'lucide-react'
 import type { PlayerCard } from '../../types/engine'
 import { PlayerCard as Face } from './PlayerCard'
 import { Button } from '../ui/button'
+import { RatingBadge } from './RatingBadge'
+import { CaptainProfile } from './CaptainProfile'
+import { useQuery } from '@tanstack/react-query'
+import { api } from '../../api/client'
+import { captainTendency } from '../../lib/captaincy'
 import { ROLE_LABEL } from '../../lib/labels'
 import { useNavigate } from 'react-router-dom'
 
@@ -14,7 +19,9 @@ function bars(card: PlayerCard, keys: { k: keyof PlayerCard['attrs']; label: str
 
 export function CardDetail({ card, open, onOpenChange }: { card: PlayerCard | null; open: boolean; onOpenChange: (o: boolean) => void }) {
   const nav = useNavigate()
+  const model = useQuery({ queryKey: ['engine-model'], queryFn: api.engineModel, staleTime: Infinity })
   if (!card) return null
+  const stroke = model.data?.masterstrokes.find((m) => m.code === card.captaincy?.masterstroke)
   const batting = bars(card, [
     { k: 'technique', label: 'Technique' }, { k: 'power', label: 'Power' }, { k: 'timing', label: 'Timing' },
     { k: 'vs_pace', label: 'vs Pace' }, { k: 'vs_spin', label: 'vs Spin' }, { k: 'temperament', label: 'Temperament' }, { k: 'running', label: 'Running' },
@@ -54,6 +61,29 @@ export function CardDetail({ card, open, onOpenChange }: { card: PlayerCard | nu
             </Dialog.Close>
           </div>
           <div className="flex justify-center my-5"><Face card={card} size="lg" /></div>
+          <div className="rounded-xl border border-border p-4 mb-5">
+            <h2 className="font-display text-xl font-semibold">Match form</h2>
+            {card.form ? (
+              <>
+                <div className="grid grid-cols-3 gap-3 mt-2">
+                  <div><p className="text-xs uppercase tracking-wider text-muted font-semibold">Average</p><RatingBadge value={card.form.avg} className="text-2xl px-2 py-1 mt-1" /></div>
+                  <div><p className="text-xs uppercase tracking-wider text-muted font-semibold">Best</p><RatingBadge value={card.form.best} className="text-2xl px-2 py-1 mt-1" /></div>
+                  <div><p className="text-xs uppercase tracking-wider text-muted font-semibold">Matches</p><p className="font-display text-3xl font-bold tabular leading-none mt-1">{card.form.matches}</p></div>
+                </div>
+                <p className="text-sm text-muted mt-3 mb-1">Last {card.form.recent.length}, oldest first</p>
+                <div className="flex gap-1.5">{card.form.recent.map((r, i) => <RatingBadge key={i} value={r} className="text-base px-2 py-1" />)}</div>
+              </>
+            ) : (
+              <p className="text-sm text-muted mt-1">No matches yet. Every match gives this card a rating from 3.0 to 10.0 and a little XP.</p>
+            )}
+          </div>
+          {card.captaincy && (
+            <div className="rounded-xl border border-border p-4 mb-5">
+              <h2 className="font-display text-xl font-semibold mb-1">As captain</h2>
+              <CaptainProfile cp={card.captaincy} rep={card.captainRep} def={stroke} />
+              <p className="text-xs text-muted mt-2">{captainTendency(card.captaincy)}</p>
+            </div>
+          )}
           <h2 className="font-display text-xl font-semibold">Strengths</h2>
           <p className="text-sm text-muted mb-2">The chart matches the bars below. Scores run from 0 to 100.</p>
           <div className="h-52">
