@@ -1,6 +1,8 @@
 package match
 
 import (
+	"sort"
+	"log"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -21,6 +23,8 @@ const (
 	StatusSimulating = "SIMULATING"
 	StatusComplete   = "COMPLETE"
 	StatusMatching   = "MATCHING"
+	StatusBreak      = "INNINGS_BREAK" // first innings done, waiting for both captains' calls
+	StatusSuperOver  = "SUPER_OVER"    // tied, waiting for both sides' Super Over picks
 )
 
 type Service struct {
@@ -52,8 +56,8 @@ func (s *Service) CreateBotMatch(ctx context.Context, user store.User) (store.Ma
 	_ = s.Store.UpsertLineup(ctx, store.LineupRow{
 		MatchID: m.ID, UserID: "bot",
 		CardIDs: parseIDs(ids), BattingOrder: parseIDs(deck.Lineup.BattingOrder),
-		BowlingPlan: parseIDs(deck.Lineup.BowlingPlan), TossPref: "chase",
-		LockedAt: &now, Snapshot: snap,
+		BowlingPlan: parseIDs(deck.Lineup.BowlingPlan),
+		LockedAt: &now, Snapshot: snap, CaptainID: idPtr(deck.Lineup.CaptainID),
 	})
 	return m, nil
 }
@@ -103,53 +107,153 @@ func (s *Service) CreatePvPMatch(ctx context.Context, user store.User) (store.Ma
 	return m, false, err
 }
 
-func (s *Service) AutoPickIfTimedOut(ctx context.Context, m store.MatchRow, user store.User) error {
-	if m.Status != StatusLineup {
+// LineupGrace is how long a player-vs-player opponent who has locked in waits
+// before the other side's default team is locked for them. Bot matches never
+// time out: nobody is waiting.
+const LineupGrace = 3 * time.Minute
+
+// LineupDeadline returns when the given user's lineup will be auto-locked, or
+// nil if no deadline applies (bot match, opponent not locked, or already locked).
+func LineupDeadline(m store.MatchRow, lineups []store.LineupRow, userID uuid.UUID) *time.Time {
+	if m.IsBot || m.Status != StatusLineup || m.AwayUserID == nil {
 		return nil
 	}
-	if time.Since(m.CreatedAt) < 60*time.Second {
+	var mine, theirs *store.LineupRow
+	for i := range lineups {
+		if lineups[i].UserID == userID.String() {
+			mine = &lineups[i]
+		} else {
+			theirs = &lineups[i]
+		}
+	}
+	if (mine != nil && mine.LockedAt != nil) || theirs == nil || theirs.LockedAt == nil {
+		return nil
+	}
+	d := theirs.LockedAt.Add(LineupGrace)
+	return &d
+}
+
+// LockStaleLineup auto-locks the idle side of a player-vs-player match with
+// their saved default once the other side has waited LineupGrace.
+func (s *Service) LockStaleLineup(ctx context.Context, m store.MatchRow) error {
+	if m.IsBot || m.Status != StatusLineup || m.AwayUserID == nil {
 		return nil
 	}
 	lus, err := s.Store.Lineups(ctx, m.ID)
 	if err != nil {
 		return err
 	}
-	for _, l := range lus {
-		if l.UserID == user.ID.String() && l.LockedAt != nil {
-			return nil
+	for _, uid := range []uuid.UUID{m.HomeUserID, *m.AwayUserID} {
+		d := LineupDeadline(m, lus, uid)
+		if d == nil || time.Now().Before(*d) {
+			continue
 		}
+		u, err := s.Store.UserByID(ctx, uid)
+		if err != nil {
+			return err
+		}
+		req, err := s.DefaultLineup(ctx, u)
+		if err != nil {
+			return err
+		}
+		log.Printf("match %s: lineup timed out for %s, using their default", m.ID, u.Username)
+		return s.LockLineup(ctx, u, m.ID, req)
 	}
+	return nil
+}
+
+// DefaultLineup is the user's saved team and strategy if it is still valid
+// (every card still owned, rules still met); otherwise their best cards by
+// overall with balanced tactics.
+func (s *Service) DefaultLineup(ctx context.Context, user store.User) (LineupReq, error) {
 	owned, err := s.Store.CardsForUser(ctx, user.ID)
 	if err != nil {
-		return err
+		return LineupReq{}, err
+	}
+	byID := map[string]store.CardRow{}
+	for _, c := range owned {
+		byID[c.ID.String()] = c
+	}
+	if sq, err := s.Store.Squad(ctx, user.ID); err == nil && len(sq.CardIDs) == 7 {
+		req := LineupReq{CardIDs: strs(sq.CardIDs), BattingOrder: strs(sq.BattingOrder), BowlingPlan: strs(sq.BowlingPlan)}
+		if sq.CaptainID != nil {
+			req.CaptainID = sq.CaptainID.String()
+		}
+		if lu, ok := toLineup(user, req, byID); ok {
+			if req.CaptainID == "" {
+				req.CaptainID = engine.CaptainOf(lu).ID
+				lu.CaptainID = req.CaptainID
+			}
+			if engine.ValidateLineup(lu) == nil {
+				return req, nil
+			}
+		}
 	}
 	byRole := map[engine.Role][]store.CardRow{}
 	for _, c := range owned {
 		byRole[c.Player.Role] = append(byRole[c.Player.Role], c)
 	}
-	need := []engine.Role{engine.RoleBAT, engine.RoleBAT, engine.RoleBAT, engine.RoleWK, engine.RoleAR, engine.RoleBOWL, engine.RoleBOWL}
 	var pick []engine.Card
-	used := map[string]bool{}
-	for _, role := range need {
-		for _, c := range byRole[role] {
-			if used[c.ID.String()] {
-				continue
-			}
-			used[c.ID.String()] = true
-			pick = append(pick, c.ToEngine())
-			break
+	for role, n := range map[engine.Role]int{engine.RoleBAT: 3, engine.RoleWK: 1, engine.RoleAR: 1, engine.RoleBOWL: 2} {
+		cs := byRole[role]
+		sort.Slice(cs, func(i, j int) bool { return engine.Overall(cs[i].ToEngine()) > engine.Overall(cs[j].ToEngine()) })
+		for i := 0; i < n && i < len(cs); i++ {
+			pick = append(pick, cs[i].ToEngine())
 		}
 	}
 	if len(pick) != 7 {
-		return nil
+		return LineupReq{}, fmt.Errorf("not enough cards to field a team")
 	}
-	req := LineupReq{
-		CardIDs: cardIDs(pick),
-		BattingOrder: engine.DefaultBattingOrder(pick),
-		BowlingPlan:  engine.DefaultBowlingPlan(pick),
-		TossPref:     "chase",
+	return LineupReq{
+		CardIDs: cardIDs(pick), BattingOrder: engine.DefaultBattingOrder(pick),
+		BowlingPlan: engine.DefaultBowlingPlan(pick), CaptainID: engine.CaptainOf(engine.Lineup{Cards: pick}).ID,
+	}, nil
+}
+
+// SaveDefault validates and stores the user's default team and strategy.
+func (s *Service) SaveDefault(ctx context.Context, user store.User, req LineupReq) error {
+	owned, err := s.Store.CardsForUser(ctx, user.ID)
+	if err != nil {
+		return err
 	}
-	return s.LockLineup(ctx, user, m.ID, req)
+	byID := map[string]store.CardRow{}
+	for _, c := range owned {
+		byID[c.ID.String()] = c
+	}
+	lu, ok := toLineup(user, req, byID)
+	if !ok {
+		return fmt.Errorf("every card in the squad must be one you own")
+	}
+	if err := engine.ValidateLineup(lu); err != nil {
+		return err
+	}
+	return s.Store.SaveSquad(ctx, user.ID, store.SquadRow{
+		CardIDs: parseIDs(req.CardIDs), BattingOrder: parseIDs(req.BattingOrder), BowlingPlan: parseIDs(req.BowlingPlan),
+		CaptainID: idPtr(req.CaptainID),
+	})
+}
+
+func toLineup(user store.User, req LineupReq, owned map[string]store.CardRow) (engine.Lineup, bool) {
+	var cs []engine.Card
+	for _, id := range req.CardIDs {
+		c, ok := owned[id]
+		if !ok {
+			return engine.Lineup{}, false
+		}
+		cs = append(cs, c.ToEngine())
+	}
+	return engine.Lineup{
+		UserID: user.ID.String(), Cards: cs, BattingOrder: req.BattingOrder,
+		BowlingPlan: req.BowlingPlan, CaptainID: req.CaptainID,
+	}, true
+}
+
+func strs(ids []uuid.UUID) []string {
+	out := make([]string, len(ids))
+	for i, id := range ids {
+		out[i] = id.String()
+	}
+	return out
 }
 
 func (s *Service) FallbackBotIfNeeded(ctx context.Context, m store.MatchRow, user store.User) (store.MatchRow, error) {
@@ -190,17 +294,19 @@ func (s *Service) FallbackBotIfNeeded(ctx context.Context, m store.MatchRow, use
 	_ = s.Store.UpsertLineup(ctx, store.LineupRow{
 		MatchID: m.ID, UserID: "bot",
 		CardIDs: parseIDs(ids), BattingOrder: parseIDs(deck.Lineup.BattingOrder),
-		BowlingPlan: parseIDs(deck.Lineup.BowlingPlan), TossPref: "chase",
-		LockedAt: &now, Snapshot: snap,
+		BowlingPlan: parseIDs(deck.Lineup.BowlingPlan),
+		LockedAt: &now, Snapshot: snap, CaptainID: idPtr(deck.Lineup.CaptainID),
 	})
 	return m, nil
 }
 
+// LineupReq is what a player chooses before a match: the seven, the captain,
+// and the batting and bowling orders. Tactics and the toss call are the captain's.
 type LineupReq struct {
 	CardIDs      []string `json:"cardIds"`
 	BattingOrder []string `json:"battingOrder"`
 	BowlingPlan  []string `json:"bowlingPlan"`
-	TossPref     string   `json:"tossPref"`
+	CaptainID    string   `json:"captainId"`
 }
 
 func (s *Service) LockLineup(ctx context.Context, user store.User, matchID uuid.UUID, req LineupReq) error {
@@ -232,10 +338,7 @@ func (s *Service) LockLineup(ctx context.Context, user store.User, matchID uuid.
 	}
 	lu := engine.Lineup{
 		UserID: user.ID.String(), Cards: engCards,
-		BattingOrder: req.BattingOrder, BowlingPlan: req.BowlingPlan, TossPref: req.TossPref,
-	}
-	if lu.TossPref == "" {
-		lu.TossPref = "chase"
+		BattingOrder: req.BattingOrder, BowlingPlan: req.BowlingPlan, CaptainID: req.CaptainID,
 	}
 	if err := engine.ValidateLineup(lu); err != nil {
 		return err
@@ -245,156 +348,20 @@ func (s *Service) LockLineup(ctx context.Context, user store.User, matchID uuid.
 	if err := s.Store.UpsertLineup(ctx, store.LineupRow{
 		MatchID: matchID, UserID: user.ID.String(),
 		CardIDs: parseIDs(req.CardIDs), BattingOrder: parseIDs(req.BattingOrder),
-		BowlingPlan: parseIDs(req.BowlingPlan), TossPref: lu.TossPref,
-		LockedAt: &now, Snapshot: snap,
+		BowlingPlan: parseIDs(req.BowlingPlan),
+		LockedAt: &now, Snapshot: snap, CaptainID: idPtr(req.CaptainID),
 	}); err != nil {
 		return err
 	}
 	return s.trySimulate(ctx, matchID)
 }
 
-func (s *Service) trySimulate(ctx context.Context, matchID uuid.UUID) error {
-	m, err := s.Store.MatchByID(ctx, matchID)
-	if err != nil {
-		return err
-	}
-	lus, err := s.Store.Lineups(ctx, matchID)
-	if err != nil {
-		return err
-	}
-	homeU, err := s.Store.UserByID(ctx, m.HomeUserID)
-	if err != nil {
-		return err
-	}
-	var homeL, awayL *store.LineupRow
-	for i := range lus {
-		if lus[i].UserID == m.HomeUserID.String() {
-			homeL = &lus[i]
-		} else {
-			awayL = &lus[i]
-		}
-	}
-	if homeL == nil || homeL.LockedAt == nil {
-		return nil
-	}
-	if !m.IsBot {
-		if m.AwayUserID == nil {
-			return nil
-		}
-		if awayL == nil || awayL.LockedAt == nil {
-			return nil
-		}
-	} else if awayL == nil {
-		return nil
-	}
+// RewardCardsPerWin is how many new cards a win earns.
+const RewardCardsPerWin = 3
 
-	homeLU, err := lineupFromRow(*homeL)
-	if err != nil {
-		return err
-	}
-	awayLU, err := lineupFromRow(*awayL)
-	if err != nil {
-		return err
-	}
-
-	m.Status = StatusSimulating
-	_ = s.Store.UpdateMatch(ctx, m)
-
-	res, err := engine.Simulate(m.Seed, homeLU, awayLU, engine.TossResult{})
-	if err != nil {
-		return err
-	}
-	toss, _ := json.Marshal(res.Toss)
-	result, _ := json.Marshal(res)
-	balls, _ := json.Marshal(res.Balls)
-
-	oppTrophies := homeU.Trophies
-	if m.IsBot {
-		var p bot.Profile
-		_ = json.Unmarshal(m.BotProfile, &p)
-		oppTrophies = p.Trophies
-	} else if m.AwayUserID != nil {
-		awayU, err := s.Store.UserByID(ctx, *m.AwayUserID)
-		if err == nil {
-			oppTrophies = awayU.Trophies
-		}
-	}
-
-	homeWon := res.Winner == "home"
-	awayWon := res.Winner == "away"
-	hd := trophy.Delta(homeU.Trophies, oppTrophies, homeWon)
-	if res.Winner == "tie" {
-		hd = 0
-	}
-	ht := trophy.Apply(homeU.Trophies, hd)
-	_ = s.Store.UpdateTrophies(ctx, homeU.ID, ht, trophy.ArenaFor(ht).Name)
-	if s.Q != nil {
-		_ = s.Q.SetScore(ctx, homeU.ID, ht)
-	}
-
-	var winner *uuid.UUID
-	if homeWon {
-		id := homeU.ID
-		winner = &id
-	}
-	ad := 0
-	if !m.IsBot && m.AwayUserID != nil {
-		awayU, err := s.Store.UserByID(ctx, *m.AwayUserID)
-		if err == nil {
-			ad = trophy.Delta(awayU.Trophies, homeU.Trophies, awayWon)
-			if res.Winner == "tie" {
-				ad = 0
-			}
-			at := trophy.Apply(awayU.Trophies, ad)
-			_ = s.Store.UpdateTrophies(ctx, awayU.ID, at, trophy.ArenaFor(at).Name)
-			if s.Q != nil {
-				_ = s.Q.SetScore(ctx, awayU.ID, at)
-			}
-			if awayWon {
-				id := awayU.ID
-				winner = &id
-			}
-		}
-	}
-
-	now := time.Now()
-	m.Status = StatusComplete
-	m.Toss = toss
-	m.Result = result
-	m.BallLog = balls
-	m.WinnerUserID = winner
-	m.TrophyDeltaHome = &hd
-	m.TrophyDeltaAway = &ad
-	m.CompletedAt = &now
-	if err := s.Store.UpdateMatch(ctx, m); err != nil {
-		return err
-	}
-
-	if homeWon {
-		if err := s.grantRewards(ctx, homeU, m.ID); err != nil {
-			return err
-		}
-	} else {
-		_ = s.grantLossXP(ctx, homeU, homeLU)
-	}
-	if !m.IsBot && m.AwayUserID != nil {
-		awayU, err := s.Store.UserByID(ctx, *m.AwayUserID)
-		if err == nil {
-			if awayWon {
-				_ = s.grantRewards(ctx, awayU, m.ID)
-			} else {
-				_ = s.grantLossXP(ctx, awayU, awayLU)
-			}
-		}
-	}
-	if s.Q != nil {
-		payload, _ := json.Marshal(map[string]any{"type": "complete", "matchId": m.ID})
-		_ = s.Q.Publish(ctx, m.ID, string(payload))
-	}
-	return nil
-}
-
-func (s *Service) grantRewards(ctx context.Context, user store.User, matchID uuid.UUID) error {
+// grantRewards gives the win's cards. With boosted, the first card is rolled
+// with the next arena's odds (a win-streak reward).
+func (s *Service) grantRewards(ctx context.Context, user store.User, matchID uuid.UUID, boosted bool) error {
 	catalog, err := s.Store.Players(ctx)
 	if err != nil {
 		return err
@@ -405,8 +372,14 @@ func (s *Service) grantRewards(ctx context.Context, user store.User, matchID uui
 	}
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	var ids []uuid.UUID
-	for i := 0; i < 3; i++ {
-		r := cards.RollRarity(rng, user.Arena)
+	for i := 0; i < RewardCardsPerWin; i++ {
+		arena := user.Arena
+		if boosted && i == 0 {
+			if next := trophy.NextArena(user.Trophies); next != nil {
+				arena = next.Name
+			}
+		}
+		r := cards.RollRarity(rng, arena)
 		pool := byR[r]
 		if len(pool) == 0 {
 			pool = catalog
@@ -421,70 +394,139 @@ func (s *Service) grantRewards(ctx context.Context, user store.User, matchID uui
 	return s.Store.InsertReward(ctx, user.ID, matchID, ids)
 }
 
-func (s *Service) grantLossXP(ctx context.Context, user store.User, lu engine.Lineup) error {
+// grantMatchXP rates each of the user's cards and pays performance XP (plus
+// the consolation XP on a loss or tie), recording both in one transaction.
+func (s *Service) grantMatchXP(ctx context.Context, user store.User, matchID uuid.UUID, lu engine.Lineup, ratings map[string]float64, lost bool) error {
+	var entries []store.MatchXPEntry
 	for _, c := range lu.Cards {
 		id, err := uuid.Parse(c.ID)
 		if err != nil {
 			continue
 		}
 		row, err := s.Store.CardByID(ctx, id)
-		if err != nil {
-			continue
+		if err != nil || row.UserID != user.ID {
+			continue // sacrificed since the match, or not this user's
 		}
-		xp := row.XP + cards.LossXP()
-		lvl := row.Level
-		for lvl < engine.LevelCap(row.Rarity) && xp >= cards.XPToNext(lvl) {
-			xp -= cards.XPToNext(lvl)
-			lvl++
+		rating, ok := ratings[c.ID]
+		if !ok {
+			rating = engine.Ratings.Base
 		}
-		_ = s.Store.UpdateCardXP(ctx, id, xp, lvl)
+		gain := cards.PerformanceXP(rating)
+		if lost {
+			gain += cards.LossXP()
+		}
+		lvl, xp, _ := cards.ApplyXP(row.Level, row.XP, row.Rarity, gain)
+		entries = append(entries, store.MatchXPEntry{CardID: id, Rating: rating, XP: gain, NewLevel: lvl, NewXP: xp})
+	}
+	return s.Store.RecordMatchXP(ctx, matchID, user.ID, entries)
+}
+
+// MaxSacrifices caps one training session.
+const MaxSacrifices = 20
+
+// TrainResult describes a training session (real or previewed).
+type TrainResult struct {
+	XPGained      int `json:"xpGained"`
+	LevelBefore   int `json:"levelBefore"`
+	LevelAfter    int `json:"levelAfter"`
+	XPAfter       int `json:"xpAfter"`
+	XPToNext      int `json:"xpToNext"`
+	Wasted        int `json:"wasted"`
+	OverallBefore int `json:"overallBefore"`
+	OverallAfter  int `json:"overallAfter"`
+	LevelCap      int `json:"levelCap"`
+}
+
+func planTraining(target store.CardRow, sacs []store.CardRow) (TrainResult, error) {
+	cap := engine.LevelCap(target.Rarity)
+	if target.Level >= cap {
+		return TrainResult{}, fmt.Errorf("%s is already at the level cap (%d)", target.Player.Name, cap)
+	}
+	gain := 0
+	for _, c := range sacs {
+		gain += cards.XPForSacrifice(c.Rarity, c.PlayerID == target.PlayerID)
+	}
+	lvl, xp, wasted := cards.ApplyXP(target.Level, target.XP, target.Rarity, gain)
+	before := target.ToEngine()
+	after := before
+	after.Level = lvl
+	return TrainResult{
+		XPGained: gain, LevelBefore: target.Level, LevelAfter: lvl, XPAfter: xp, XPToNext: cards.XPToNext(lvl),
+		Wasted: wasted, OverallBefore: engine.Overall(before), OverallAfter: engine.Overall(after), LevelCap: cap,
+	}, nil
+}
+
+// checkSacrifices rejects duplicates, the target itself, oversized batches,
+// and cards in the user's saved squad.
+func (s *Service) checkSacrifices(ctx context.Context, user store.User, targetID uuid.UUID, sacIDs []uuid.UUID) error {
+	if len(sacIDs) == 0 {
+		return fmt.Errorf("choose at least one card to sacrifice")
+	}
+	if len(sacIDs) > MaxSacrifices {
+		return fmt.Errorf("sacrifice at most %d cards at a time", MaxSacrifices)
+	}
+	seen := map[uuid.UUID]bool{}
+	for _, id := range sacIDs {
+		if id == targetID {
+			return fmt.Errorf("cannot sacrifice the card being trained")
+		}
+		if seen[id] {
+			return fmt.Errorf("card %s is listed twice", id)
+		}
+		seen[id] = true
+	}
+	squad, err := s.Store.Squad(ctx, user.ID)
+	if err != nil {
+		return err
+	}
+	for _, id := range squad.CardIDs {
+		if seen[id] {
+			c, _ := s.Store.CardByID(ctx, id)
+			return fmt.Errorf("%s is in your saved squad. Swap them out of the squad first", c.Player.Name)
+		}
 	}
 	return nil
 }
 
-func (s *Service) Train(ctx context.Context, user store.User, targetID uuid.UUID, sacIDs []uuid.UUID) (store.CardRow, int, error) {
+// PreviewTraining computes the result of a training session without changing anything.
+func (s *Service) PreviewTraining(ctx context.Context, user store.User, targetID uuid.UUID, sacIDs []uuid.UUID) (TrainResult, error) {
+	if err := s.checkSacrifices(ctx, user, targetID, sacIDs); err != nil {
+		return TrainResult{}, err
+	}
 	target, err := s.Store.CardByID(ctx, targetID)
-	if err != nil {
-		return target, 0, err
+	if err != nil || target.UserID != user.ID {
+		return TrainResult{}, store.ErrNotOwned
 	}
-	if target.UserID != user.ID {
-		return target, 0, fmt.Errorf("not your card")
-	}
-	if target.Level >= engine.LevelCap(target.Rarity) && target.XP >= cards.XPToNext(target.Level) {
-		return target, 0, fmt.Errorf("card is at level cap")
-	}
-	if target.Level >= engine.LevelCap(target.Rarity) {
-		return target, 0, fmt.Errorf("card is at level cap")
-	}
-	xp := 0
+	var sacs []store.CardRow
 	for _, id := range sacIDs {
-		if id == targetID {
-			return target, 0, fmt.Errorf("cannot sacrifice the target card")
-		}
 		c, err := s.Store.CardByID(ctx, id)
+		if err != nil || c.UserID != user.ID {
+			return TrainResult{}, store.ErrNotOwned
+		}
+		sacs = append(sacs, c)
+	}
+	return planTraining(target, sacs)
+}
+
+// Train sacrifices cards to level up the target, all in one transaction.
+func (s *Service) Train(ctx context.Context, user store.User, targetID uuid.UUID, sacIDs []uuid.UUID) (store.CardRow, TrainResult, error) {
+	if err := s.checkSacrifices(ctx, user, targetID, sacIDs); err != nil {
+		return store.CardRow{}, TrainResult{}, err
+	}
+	var result TrainResult
+	_, err := s.Store.Train(ctx, user.ID, targetID, sacIDs, func(target store.CardRow, sacs []store.CardRow) (int, int, int, error) {
+		r, err := planTraining(target, sacs)
 		if err != nil {
-			return target, 0, err
+			return 0, 0, 0, err
 		}
-		if c.UserID != user.ID {
-			return target, 0, fmt.Errorf("not your card")
-		}
-		xp += cards.XPForSacrifice(c.Rarity, c.PlayerID == target.PlayerID)
+		result = r
+		return r.LevelAfter, r.XPAfter, r.XPGained, nil
+	})
+	if err != nil {
+		return store.CardRow{}, TrainResult{}, err
 	}
-	newXP := target.XP + xp
-	lvl := target.Level
-	for lvl < engine.LevelCap(target.Rarity) && newXP >= cards.XPToNext(lvl) {
-		newXP -= cards.XPToNext(lvl)
-		lvl++
-	}
-	if err := s.Store.UpdateCardXP(ctx, targetID, newXP, lvl); err != nil {
-		return target, 0, err
-	}
-	if err := s.Store.DeleteCards(ctx, sacIDs); err != nil {
-		return target, 0, err
-	}
-	_ = s.Store.InsertTraining(ctx, user.ID, targetID, sacIDs, xp, lvl)
 	updated, err := s.Store.CardByID(ctx, targetID)
-	return updated, xp, err
+	return updated, result, err
 }
 
 func (s *Service) GrantStarter(ctx context.Context, user store.User) ([]store.CardRow, error) {
@@ -543,10 +585,18 @@ func lineupFromRow(l store.LineupRow) (engine.Lineup, error) {
 		}
 		return s
 	}
+	var tac engine.Tactics
+	if len(l.Tactics) > 0 {
+		_ = json.Unmarshal(l.Tactics, &tac)
+	}
+	captain := ""
+	if l.CaptainID != nil {
+		captain = l.CaptainID.String()
+	}
 	return engine.Lineup{
 		UserID: l.UserID, Cards: cards,
 		BattingOrder: ids(l.BattingOrder), BowlingPlan: ids(l.BowlingPlan),
-		TossPref: l.TossPref,
+		TossPref: l.TossPref, Tactics: tac, CaptainID: captain,
 	}, nil
 }
 
@@ -569,4 +619,17 @@ func parseIDs(ss []string) []uuid.UUID {
 		out = append(out, id)
 	}
 	return out
+}
+
+func mustJSON(v any) []byte {
+	b, _ := json.Marshal(v)
+	return b
+}
+
+func idPtr(s string) *uuid.UUID {
+	id, err := uuid.Parse(s)
+	if err != nil {
+		return nil
+	}
+	return &id
 }
