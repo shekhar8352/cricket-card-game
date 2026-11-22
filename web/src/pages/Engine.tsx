@@ -1,10 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
-import { Calculator, Dice5, Eye, Gauge, Layers, ListChecks, Lock, Scale, Shield, Swords, Trophy, Wind } from 'lucide-react'
+import { Calculator, Clock, Crown, Dice5, Eye, Gauge, Layers, Link2, ListChecks, Lock, Scale, Shield, ShieldAlert, Sparkles, Star, Swords, Trophy, Wind, Zap } from 'lucide-react'
+import { CAPTAINCY_ATTRS } from '../lib/captaincy'
 import { api } from '../api/client'
 import { Panel } from '../components/ui/chrome'
 import { PitchCard, PlanSegment } from '../components/match/MatchPlan'
 import { cn } from '../lib/cn'
+import { RatingBadge } from '../components/card/RatingBadge'
 import { APPROACH, FIELD } from '../lib/strategy'
 import type { Approach, BowlType, EngineModel, FieldPlan, Outcome, Pitch, WeightDelta } from '../types/engine'
 
@@ -28,6 +30,10 @@ const TOC = [
   ['conditions', 'Pitch, matchups, pressure'],
   ['traits', 'Player traits'],
   ['calculator', 'Odds calculator'],
+  ['captains', 'Captains'],
+  ['quirks', 'Powerplay, free hit, chemistry'],
+  ['break', 'Innings break & Super Over'],
+  ['ratings', 'Match ratings & XP'],
   ['after', 'After the match'],
   ['fairness', 'Fairness & bots'],
 ] as const
@@ -69,8 +75,12 @@ export function EnginePage() {
             <Conditions m={m} />
             <Traits m={m} />
             <OddsCalculator m={m} />
+            <Captains m={m} />
+            <Quirks m={m} />
+            <BreakAndSuperOver m={m} />
+            <Ratings m={m} />
             <After m={m} />
-            <Fairness m={m} />
+            <Fairness />
           </>
         )}
       </article>
@@ -223,9 +233,11 @@ function Flow({ m }: { m: EngineModel }) {
         {[
           ['Match created', 'A random seed is fixed for the match. It decides the pitch and every dice roll, before anyone picks a team.'],
           ['Pitch revealed', 'Both captains see the pitch report before choosing a lineup, so you can pick players who suit it.'],
-          ['Lineups locked', 'Each side locks 7 players (3 batters, 1 keeper, 1 all-rounder, 2 bowlers), a batting order, who bowls each over, a field for every over, a batting approach per phase and a toss preference.'],
-          ['Toss', 'A 50/50 coin flip from the seed. The winner’s preference (bat first or chase) decides who bats first.'],
-          ['Two innings', `${f.overs} overs of ${f.ballsPerOver} legal balls each. An innings ends after ${f.maxWickets} wickets or ${f.overs} overs. The chase ends the moment the target is passed.`],
+          ['Lineups locked', 'Each side locks 7 players (3 batters, 1 keeper, 1 all-rounder, 2 bowlers), a captain, a batting order and who bowls each over.'],
+          ['Toss', 'A 50/50 coin flip from the seed. The winning captain decides to bat or chase, reading the pitch if they are sharp enough.'],
+          ['First innings', `${f.overs} overs of ${f.ballsPerOver} legal balls. It ends after ${f.maxWickets} wickets or ${f.overs} overs. Overs 1–2 are the powerplay. Captains make a call every over.`],
+          ['Innings break', 'The match pauses. The second-innings conditions are revealed and each side makes a captain’s call, and may change its batting order (chasing) or bowling order (defending).'],
+          ['Chase', 'The second innings ends the moment the target is passed. A tie goes to a Super Over.'],
           ['Result', 'Most runs wins. Equal scores is a tie. Then trophies, rewards and player of the match are worked out.'],
         ].map(([t, b], i) => (
           <li key={t} className="flex gap-3">
@@ -410,18 +422,7 @@ function Strategy({ m }: { m: EngineModel }) {
         <b>Reading the table.</b> Against a defensive field, defensive batting scores most. Against an attacking field, attacking batting does. The fielding side wants the opposite, so each side guesses at the other. Balanced batting has the best worst case, which makes it the safe default.
       </Panel>
 
-      <h3 className="font-bold pt-2">Bot captains</h3>
-      <p className="text-sm text-muted">Each bot match uses one of these styles, picked at random. The scouting report shows it before you lock in. Players’ plans stay secret.</p>
-      <div className="grid md:grid-cols-3 gap-3">
-        {m.botStyles.map((s) => (
-          <Panel key={s.code} className="!p-4 text-sm">
-            <p className="font-display text-xl font-bold">{s.name}</p>
-            <p className="text-muted">{s.description}</p>
-            <p className="mt-2"><b>Bat:</b> {s.tactics.batApproach.map((a) => APPROACH[a].label).join(' → ')}</p>
-            <p><b>Field:</b> {s.tactics.fieldPlan.map((f) => FIELD[f].short).join(' · ')}</p>
-          </Panel>
-        ))}
-      </div>
+      <p className="text-sm text-muted">You never set these by hand: captains choose an approach and a field every over. See <a className="underline" href="#captains">Captains</a>.</p>
     </Section>
   )
 }
@@ -558,6 +559,173 @@ function OddsCalculator({ m }: { m: EngineModel }) {
   )
 }
 
+function Captains({ m }: { m: EngineModel }) {
+  const c = m.captain
+  return (
+    <Section id="captains" icon={<Crown size={20} />} title="Captains" lede="You pick a captain; the captain makes every tactical call. Each player has captaincy ratings, and every call involves some chance, so a captain’s style tells you their tendencies but not their next move.">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {CAPTAINCY_ATTRS.map((a) => (
+          <Panel key={a.key} className="!p-4">
+            <p className="font-bold">{a.label}</p>
+            <p className="text-sm text-muted">{a.help}</p>
+          </Panel>
+        ))}
+      </div>
+      <p className="text-sm text-muted">Well-known captains have hand-set profiles based on their reputations (for example an aggressive chaser, a calm finisher, a patient tactician). Everyone else gets a profile from their attributes: power vs technique for aggression, temperament for calm, technique and temperament for tactics (keepers get a bonus), and traits for flair, plus a small fixed variation per player.</p>
+      <h3 className="font-bold pt-2">How a captain decides each over</h3>
+      <Formula>{`for each option (defend = −1, balanced = 0, attack = +1):
+  score = (Aggression − 50) ÷ ${c.aggressionDivisor} × option
+        + situation × option × judgement        judgement = ${c.judgementBase} + Tactics ÷ 100 × ${c.judgementScale}
+        + innings-break plan bias × option
+        + ${c.readBonus} on the counter to the opponent’s most common call so far,
+          with probability Tactics%   (the captain "reads" them)
+
+pick at random, weighted by exp(score ÷ temperature)
+  temperature = ${c.tempBase} + Flair ÷ ${c.tempFlairDivisor} − (Tactics − 50) ÷ ${c.tempTacticsDivisor}   (at least ${c.tempMin})`}</Formula>
+      <ul className="list-disc pl-5 space-y-1 text-sm text-muted">
+        <li><b className="text-fg">Batting situation:</b> lean to attack in the powerplay and the last over; attack harder the further behind the required rate; defend with 4+ wickets down.</li>
+        <li><b className="text-fg">Fielding situation:</b> attack with the new ball and when 4+ wickets are down; defend the rope when the batters must score fast and in the last over.</li>
+        <li><b className="text-fg">Calm:</b> each point above 50 reduces the dot-ball pressure on that team’s batters ({c.calmDivisor} calm = 1 weight).</li>
+        <li><b className="text-fg">Armband:</b> the captain gets +{c.armbandTemperament} temperament when batting.</li>
+        <li><b className="text-fg">Reputation:</b> captains earn reputation every match; each {c.repPerTactics} points adds +1 Tactics, up to +{c.repMaxBonus}.</li>
+        <li><b className="text-fg">Reading pays most against predictable captains.</b> In testing, a sharp captain wins about 68% against a predictable one between equal teams, but only about 55% against a hard-to-read one.</li>
+      </ul>
+      <h3 className="font-bold pt-2">Masterstrokes</h3>
+      <p className="text-sm text-muted">Each captain has one signature move per match, lasting one over. When its trigger condition is met, the captain plays it with a chance based on Tactics (always by the last over). High-flair captains may play it early.</p>
+      <div className="grid sm:grid-cols-2 gap-3">
+        {m.masterstrokes.map((ms) => (
+          <Panel key={ms.code} className="!p-4">
+            <p className="font-bold flex items-center gap-1.5"><Sparkles size={14} className="text-cta" aria-hidden />{ms.name} <span className="text-xs text-muted font-normal">· {ms.side === 'bat' ? 'batting' : 'bowling'}</span></p>
+            <p className="text-sm text-muted">{ms.description}</p>
+            <DeltaChips d={ms.effect} />
+            {(ms.noPressure || ms.earlyPress || (ms.tempBoost ?? 0) > 0) && (
+              <p className="text-xs text-muted mt-1">{[ms.noPressure && 'Ignores pressure', ms.earlyPress && 'Pressure from the first dot', ms.tempBoost && `Temperament +${ms.tempBoost}`].filter(Boolean).join(' · ')}</p>
+            )}
+          </Panel>
+        ))}
+      </div>
+    </Section>
+  )
+}
+
+function Quirks({ m }: { m: EngineModel }) {
+  const ch = m.chemistry
+  return (
+    <Section id="quirks" icon={<Zap size={20} />} title="Powerplay, free hit, chemistry">
+      <div className="grid md:grid-cols-2 gap-4">
+        <Panel>
+          <h3 className="font-bold">Powerplay (overs 1–{m.powerplay.overs})</h3>
+          <p className="text-sm text-muted mt-1">Only 2 fielders are allowed outside the ring. Defensive fields work at half strength (so does the Holing out counter), fielders can’t save grounded boundaries, and every ball gets:</p>
+          <DeltaChips d={m.powerplay.effect} />
+        </Panel>
+        <Panel>
+          <h3 className="font-bold">Free hit</h3>
+          <p className="text-sm text-muted mt-1">The ball after a no-ball can’t produce a wicket except a run-out (it carries over a wide). Batters swing freely:</p>
+          <DeltaChips d={m.freeHit} />
+        </Panel>
+        <Panel>
+          <h3 className="font-bold flex items-center gap-1.5"><Link2 size={16} aria-hidden /> Batting chemistry</h3>
+          <p className="text-sm text-muted mt-1">The two batters at the crease have a link: +{ch.sameCountry} for the same country, +{ch.knownPartnership} for a known partnership (up to {ch.maxLink}). Each level adds +{ch.singlesPerLink} to singles and −{ch.dotsPerLink} to dots, gives a +{ch.runUpgradePerLink}% chance to turn a single into two, and cuts run-out risk by {ch.runOutCutPerLink}%. Team chemistry (0–100) on the lineup screen scores neighbouring pairs in your batting order.</p>
+        </Panel>
+        <Panel>
+          <h3 className="font-bold flex items-center gap-1.5"><ShieldAlert size={16} aria-hidden /> Rivalries</h3>
+          <p className="text-sm text-muted mt-1">Your matches remember every bowler-vs-batter head-to-head. Once one of your bowlers has dismissed an opposing batter {m.rival.dismissals} times, he “has his number”:</p>
+          <DeltaChips d={m.rival.effect} />
+        </Panel>
+      </div>
+    </Section>
+  )
+}
+
+function BreakAndSuperOver({ m }: { m: EngineModel }) {
+  return (
+    <Section id="break" icon={<Clock size={20} />} title="Innings break & Super Over">
+      <p className="text-muted">At the break each side picks a plan card that steers its captain for the second innings, and may change its order: the chasing side its batting order, the defending side its bowling order. In matches against players, you have {m.pause.breakGraceSeconds} seconds before your captain decides. Bots decide instantly.</p>
+      <div className="grid md:grid-cols-2 gap-3">
+        {(['chase', 'defend'] as const).map((side) => (
+          <Panel key={side}>
+            <h3 className="font-bold capitalize">{side === 'chase' ? 'Chasing' : 'Defending'} cards</h3>
+            <ul className="mt-2 space-y-2 text-sm">
+              {m.breakCalls.filter((b) => b.side === side).map((b) => (
+                <li key={b.code}>
+                  <b>{b.name}.</b> <span className="text-muted">{b.description}</span>
+                  {b.bias.some((x) => x !== 0) && <span className="block text-xs text-muted">Lean per over (+ attack, − defend): {b.bias.map((x) => (x > 0 ? `+${x}` : x)).join(', ')}</span>}
+                </li>
+              ))}
+            </ul>
+          </Panel>
+        ))}
+      </div>
+      <h3 className="font-bold pt-2">Conditions twist</h3>
+      <p className="text-sm text-muted">Revealed at the break and applied to the second innings (and any Super Over). Decided by the match seed.</p>
+      <div className="grid sm:grid-cols-2 gap-3">
+        {m.conditions.map((c) => (
+          <Panel key={c.code} className="!p-4 text-sm">
+            <p className="font-bold">{c.name} <span className="text-muted font-normal">· {c.chance}% of matches</span></p>
+            <p className="text-muted">{c.description}</p>
+          </Panel>
+        ))}
+      </div>
+      <Panel>
+        <h3 className="font-bold">Super Over</h3>
+        <p className="text-sm text-muted mt-1">A tie pauses the match again. Each side picks {m.superOver.batters} batters and 1 bowler ({m.superOver.graceSeconds} seconds against players). The side that batted second bats first; an innings is one over and ends at {m.superOver.wickets} wickets. Still level? More boundaries in the Super Over wins, then more boundaries in the whole match.</p>
+      </Panel>
+      <Panel>
+        <h3 className="font-bold">Win streaks and captain reputation</h3>
+        <p className="text-sm text-muted mt-1">
+          Win streaks add bonus trophies: {Object.entries(m.streak.bonus).map(([n, b]) => `${n} wins +${b}`).join(', ')} (5 or more stays at +{m.streak.bonus['5']}). From {m.streak.boostAt} wins in a row, one reward card is rolled with the next arena’s odds.
+          Captains gain {m.reputation.perMatch} reputation per match, +{m.reputation.perWin} for a win and +1 for every {m.reputation.readsPerPoint} good reads (up to {m.reputation.max}); every {m.reputation.perTactics} points is +1 Tactics, up to +{m.reputation.maxTactics}.
+        </p>
+      </Panel>
+    </Section>
+  )
+}
+
+function Ratings({ m }: { m: EngineModel }) {
+  const r = m.ratings
+  const px = m.progression.performanceXP
+  const examples = [5, 6, 7, 8, 9, 10]
+  const xpAt = (v: number) => Math.max(px.min, px.min + Math.round((v - px.fromRating) * px.perPoint))
+  const f = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(3).replace(/0+$/, ''))
+  return (
+    <Section id="ratings" icon={<Star size={20} />} title="Match ratings & XP" lede={`After every match each player gets a rating from ${r.min.toFixed(1)} to ${r.max.toFixed(1)}. Your cards keep their average, so you can pick players who are in form.`}>
+      <Formula>{`rating = ${r.base.toFixed(1)}  (everyone starts here)
+
+batting   + (runs − balls × ${r.parRunsPerBall}) × ${f(r.batPerRunAbovePar)}     scoring faster than par
+          + runs × ${f(r.batPerRun)}                          volume
+          ${r.duck} for a duck, ${r.cheapDismissal} if out for under ${r.cheapBelow}, +${r.notOutBonus} if not out on ${r.notOutMinRuns}+
+bowling   + wickets × ${r.bowlPerWicket}
+          + (balls × ${r.parRunsPerBall} − runs conceded) × ${f(r.bowlPerRunBelowPar)}   conceding less than par
+fielding  + ${r.catch} per catch, +${r.stumping} per stumping, +${r.runOut} per run-out,
+          ${r.drop} per drop, +${r.save} per fielding save
+result    + ${r.win} for the winning side, +${r.playerOfMatch} for player of the match
+
+then kept between ${r.min} and ${r.max} and rounded to one decimal`}</Formula>
+      <div className="grid md:grid-cols-2 gap-4">
+        <Panel>
+          <h3 className="font-bold">Performance XP</h3>
+          <p className="text-sm text-muted mt-1">Every card that plays earns a small amount of XP from its rating, win or lose: {px.min} XP, plus {px.perPoint} for each point above {px.fromRating.toFixed(1)}. Level 2 needs {m.progression.xpPerLevel} XP, so this adds up slowly next to training.</p>
+          <table className="text-sm mt-3">
+            <tbody>
+              <tr><th className="text-left pr-3 text-muted font-semibold">Rating</th>{examples.map((v) => <td key={v} className="px-2 text-center tabular">{v.toFixed(1)}</td>)}</tr>
+              <tr><th className="text-left pr-3 text-muted font-semibold">XP</th>{examples.map((v) => <td key={v} className="px-2 text-center tabular font-bold">{xpAt(v)}</td>)}</tr>
+            </tbody>
+          </table>
+        </Panel>
+        <Panel>
+          <h3 className="font-bold">Reading the colours</h3>
+          <ul className="text-sm mt-2 space-y-1.5">
+            {[[8, 'Elite: 8.0 and up'], [7, 'Good: 7.0–7.9'], [6, 'Average: 6.0–6.9'], [5, 'Poor: below 6.0']].map(([v, t]) => (
+              <li key={t} className="flex items-center gap-2"><RatingBadge value={v as number} className="text-sm px-1.5 py-0.5" /> {t}</li>
+            ))}
+          </ul>
+          <p className="text-sm text-muted mt-2">A card’s badge shows its average across every match it has played. Sort by it in your collection or lineup, or use “Fill in-form XI”.</p>
+        </Panel>
+      </div>
+    </Section>
+  )
+}
+
 function After({ m }: { m: EngineModel }) {
   const p = m.progression
   const rarities = ['Bronze', 'Silver', 'Gold', 'Legend'] as const
@@ -598,8 +766,9 @@ kept between 20 and 40, added on a win, taken on a loss, 0 on a tie`}</Formula>
         <Panel>
           <h3 className="font-bold">Experience and levels</h3>
           <p className="text-sm text-muted mt-1">
-            A loss or tie gives every card that played +{p.lossXP} XP. Training gives XP by sacrificing cards. Reaching the next level takes level × {p.xpPerLevel} XP, and each level adds +{p.levelBonus} to the attributes that matter for that card’s role.
-            Level caps: {rarities.map((r) => `${r} ${p.levelCaps[r]}`).join(', ')}.
+            Every card that plays earns performance XP from its match rating (see <a className="underline" href="#ratings">Match ratings &amp; XP</a>). A loss or tie adds +{p.lossXP} XP on top. Training gives XP by sacrificing cards: {rarities.map((r) => `${r} ${p.sacrificeXP[r]?.other}`).join(', ')} XP, or 3× for a copy of the same player, up to {p.maxSacrifices} cards at a time. Cards in your saved squad can’t be sacrificed.
+            Reaching the next level takes level × {p.xpPerLevel} XP, and each level adds +{p.levelBonus} to the attributes that matter for that card’s role.
+            Level caps: {rarities.map((r) => `${r} ${p.levelCaps[r]}`).join(', ')}. XP past the cap is not kept; training shows how much would be wasted before you confirm.
           </p>
         </Panel>
       </div>
@@ -607,13 +776,13 @@ kept between 20 and 40, added on a win, taken on a loss, 0 on a tie`}</Formula>
   )
 }
 
-function Fairness({ m }: { m: EngineModel }) {
+function Fairness() {
   return (
     <Section id="fairness" icon={<Lock size={20} />} title="Fairness & bots">
       <ul className="space-y-3">
-        <li><b>Deterministic.</b> The seed is fixed when the match is created, before lineups are picked. The same seed and the same two lineups always produce exactly the same match, which is why replays are identical.</li>
-        <li><b>Blind to players.</b> The engine only sees cards, plans and the pitch. It does not know which side is a person or a bot, how many trophies anyone has, or who is ahead. Nothing changes the odds to keep a match close.</li>
-        <li><b>Bots play by the same rules.</b> A bot’s cards are drawn from the rarities allowed in your arena, at levels typical for it, with up to ±5% random strength. Its trophy count is within 30 of yours. Its captain style is one of the {m.botStyles.length} shown above.</li>
+        <li><b>Deterministic.</b> The seed is fixed when the match is created, before lineups are picked. The same seed, the same two lineups and the same break calls and Super Over picks always produce exactly the same match, which is why replays are identical. Captains’ choices are random only in the sense of being drawn from that seed.</li>
+        <li><b>Blind to players.</b> The engine only sees cards, captains, orders, the calls made and the pitch. It does not know which side is a person or a bot, how many trophies anyone has, or who is ahead. Nothing changes the odds to keep a match close.</li>
+        <li><b>Bots play by the same rules.</b> A bot’s cards are drawn from the rarities allowed in your arena, at levels typical for it, with up to ±5% random strength. Its trophy count is within 30 of yours. Its captain is one of its three best captains, chosen at random, and uses the same captain AI as yours.</li>
         <li><b>Estimates on screen.</b> The live win predictor and “heading for” projection are rough guides worked out on your device from the score and the pitch’s par. They are not part of the engine and never affect the result.</li>
       </ul>
     </Section>

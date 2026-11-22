@@ -7,11 +7,12 @@ import { Button } from '../components/ui/button'
 import { Choice, EmptyState, Panel, ProgressBar } from '../components/ui/chrome'
 import { PlayerCard } from '../components/card/PlayerCard'
 import { PlayerAvatar } from '../components/card/PlayerAvatar'
+import { RatingBadge } from '../components/card/RatingBadge'
 import { RARITY_RING, ROLE_LABEL } from '../lib/labels'
 import { cn } from '../lib/cn'
 import type { AccountStats, Rarity, StatPlayer, TeamScore } from '../types/engine'
 
-type Tab = 'batting' | 'bowling' | 'fielding' | 'awards'
+type Tab = 'rated' | 'batting' | 'bowling' | 'fielding' | 'awards'
 
 const overs = (balls: number) => `${Math.floor(balls / 6)}.${balls % 6}`
 const date = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
@@ -19,7 +20,7 @@ const date = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day:
 export function AccountPage() {
   const nav = useNavigate()
   const q = useQuery({ queryKey: ['me', 'stats'], queryFn: api.myStats })
-  const [tab, setTab] = useState<Tab>('batting')
+  const [tab, setTab] = useState<Tab>('rated')
 
   function logout() {
     setToken(null)
@@ -133,6 +134,7 @@ export function AccountPage() {
           <section aria-labelledby="tables-h">
             <SectionTitle id="tables-h">Player stats</SectionTitle>
             <div className="flex flex-wrap gap-2 mb-3" role="group" aria-label="Stat category">
+              <Choice pressed={tab === 'rated'} onClick={() => setTab('rated')}>Match ratings</Choice>
               <Choice pressed={tab === 'batting'} onClick={() => setTab('batting')}>Batting</Choice>
               <Choice pressed={tab === 'bowling'} onClick={() => setTab('bowling')}>Bowling</Choice>
               <Choice pressed={tab === 'fielding'} onClick={() => setTab('fielding')}>Fielding</Choice>
@@ -272,8 +274,8 @@ function NameCell({ p, rank }: { p: StatPlayer; rank: number }) {
 }
 
 function StatTable({ data, tab }: { data: AccountStats; tab: Tab }) {
-  const { batting, bowling, fielding, playerOfMatch } = data.stats
-  const empty = { batting, bowling, fielding, awards: playerOfMatch }[tab].length === 0
+  const { batting, bowling, fielding, playerOfMatch, rated } = data.stats
+  const empty = { rated, batting, bowling, fielding, awards: playerOfMatch }[tab].length === 0
   if (empty) return <EmptyState title="No numbers yet" body="Play a few more matches to fill this table." />
 
   const th = 'px-3 py-2.5 font-semibold text-right whitespace-nowrap'
@@ -285,13 +287,22 @@ function StatTable({ data, tab }: { data: AccountStats; tab: Tab }) {
         <thead>
           <tr className="text-xs uppercase tracking-wider text-muted">
             <th scope="col" className="px-3 py-2.5 text-left font-semibold">Player</th>
-            {tab === 'batting' && ['M', 'Inns', 'Runs', 'HS', 'Avg', 'SR', '4s', '6s'].map((h) => <th key={h} scope="col" className={th}>{h}</th>)}
-            {tab === 'bowling' && ['M', 'Overs', 'Wkts', 'Runs', 'Best', 'Econ', 'Avg'].map((h) => <th key={h} scope="col" className={th}>{h}</th>)}
+            {tab === 'rated' && ['M', 'Avg rating', 'Best'].map((h) => <th key={h} scope="col" className={th}>{h}</th>)}
+            {tab === 'batting' && ['M', 'Inns', 'Runs', 'HS', 'Avg', 'SR', '4s', '6s', 'Rating'].map((h) => <th key={h} scope="col" className={th}>{h}</th>)}
+            {tab === 'bowling' && ['M', 'Overs', 'Wkts', 'Runs', 'Best', 'Econ', 'Avg', 'Rating'].map((h) => <th key={h} scope="col" className={th}>{h}</th>)}
             {tab === 'fielding' && ['M', 'Catches', 'Stumpings', 'Run outs', 'Total'].map((h) => <th key={h} scope="col" className={th}>{h}</th>)}
             {tab === 'awards' && ['M', 'Awards'].map((h) => <th key={h} scope="col" className={th}>{h}</th>)}
           </tr>
         </thead>
         <tbody>
+          {tab === 'rated' && rated.map((p, i) => (
+            <tr key={p.playerId} className="border-t border-border">
+              <NameCell p={p} rank={i + 1} />
+              <td className={td}>{p.matches}</td>
+              <td className={td}><RatingBadge value={p.avgRating} className="text-lg px-2 py-1" /></td>
+              <td className={td}>{p.bestRating.toFixed(1)}</td>
+            </tr>
+          ))}
           {tab === 'batting' && batting.map((b, i) => (
             <tr key={b.playerId} className="border-t border-border">
               <NameCell p={b} rank={i + 1} />
@@ -303,6 +314,7 @@ function StatTable({ data, tab }: { data: AccountStats; tab: Tab }) {
               <td className={td}>{b.strikeRate.toFixed(1)}</td>
               <td className={td}>{b.fours}</td>
               <td className={td}>{b.sixes}</td>
+              <td className={td}><RatingBadge value={b.avgRating} className="text-sm px-1.5 py-0.5" /></td>
             </tr>
           ))}
           {tab === 'bowling' && bowling.map((b, i) => (
@@ -315,6 +327,7 @@ function StatTable({ data, tab }: { data: AccountStats; tab: Tab }) {
               <td className={td}>{b.bestWickets}/{b.bestRuns}</td>
               <td className={td}>{b.economy.toFixed(2)}</td>
               <td className={td}>{b.wickets ? b.average.toFixed(1) : '—'}</td>
+              <td className={td}><RatingBadge value={b.avgRating} className="text-sm px-1.5 py-0.5" /></td>
             </tr>
           ))}
           {tab === 'fielding' && fielding.map((f, i) => (

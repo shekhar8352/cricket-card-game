@@ -7,7 +7,7 @@ export const MAX_WICKETS = 6
 /** Rough runs-per-ball for an average lineup in this engine, used for projections. */
 const RUNS_PER_BALL = 1.4
 /** Typical first-innings total for two average sides on a balanced pitch (engine-measured). */
-export const PAR_SCORE = 45
+export const PAR_SCORE = 47
 
 export interface BatLine {
   id: string

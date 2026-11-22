@@ -7,6 +7,7 @@ import { Button } from '../components/ui/button'
 import { Choice, EmptyState, PageHeader, controlClass } from '../components/ui/chrome'
 import { ROLE_LABEL } from '../lib/labels'
 import { cn } from '../lib/cn'
+import { compareForm } from '../lib/ratings'
 import type { PlayerCard as Card, Role, Rarity } from '../types/engine'
 
 export function CollectionPage() {
@@ -15,7 +16,7 @@ export function CollectionPage() {
   const [rarity, setRarity] = useState<Rarity | ''>('')
   const [search, setSearch] = useState('')
   const deferredSearch = useDeferredValue(search)
-  const [sort, setSort] = useState<'overall' | 'level' | 'newest'>('overall')
+  const [sort, setSort] = useState<'overall' | 'form' | 'level' | 'newest'>('overall')
   const [sel, setSel] = useState<Card | null>(null)
 
   const list = useMemo(() => {
@@ -26,12 +27,13 @@ export function CollectionPage() {
     if (query) items = items.filter((c) => c.name.toLowerCase().includes(query) || c.country.toLowerCase().includes(query))
     items.sort((a, b) => {
       if (sort === 'overall') return b.overall - a.overall
+      if (sort === 'form') return compareForm(a, b)
       if (sort === 'level') return b.level - a.level
       return (b.createdAt ?? '').localeCompare(a.createdAt ?? '')
     })
     const groups = new Map<string, { card: Card; n: number }>()
     for (const c of items) {
-      const k = `${c.playerId}-${c.rarity}-${c.level}`
+      const k = c.form ? c.id : `${c.playerId}-${c.rarity}-${c.level}`
       const g = groups.get(k)
       if (g) g.n++
       else groups.set(k, { card: c, n: 1 })
@@ -65,6 +67,7 @@ export function CollectionPage() {
           <label htmlFor="card-sort" className="font-medium">Sort</label>
           <select id="card-sort" value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} className={cn(controlClass, 'mt-1 cursor-pointer')}>
             <option value="overall">Overall rating</option>
+            <option value="form">Average match rating</option>
             <option value="level">Level</option>
             <option value="newest">Newest</option>
           </select>
