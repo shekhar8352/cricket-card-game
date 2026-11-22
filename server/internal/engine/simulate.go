@@ -2,7 +2,6 @@ package engine
 
 import (
 	"fmt"
-	"math"
 	"math/rand"
 )
 
@@ -18,52 +17,6 @@ type weights struct {
 
 func baseWeights() weights {
 	return weights{dot: 32, one: 30, two: 8, three: 1, four: 12, six: 7, wicket: 6, wide: 3, noball: 1}
-}
-
-func Simulate(seed int64, home, away Lineup, toss TossResult) (MatchResult, error) {
-	if err := ValidateLineup(home); err != nil {
-		return MatchResult{}, fmt.Errorf("home lineup: %w", err)
-	}
-	if err := ValidateLineup(away); err != nil {
-		return MatchResult{}, fmt.Errorf("away lineup: %w", err)
-	}
-	rng := rand.New(rand.NewSource(seed))
-	if toss.WinnerSide == "" {
-		if rng.Intn(2) == 0 {
-			toss.WinnerSide = "home"
-			toss.Decision = home.TossPref
-		} else {
-			toss.WinnerSide = "away"
-			toss.Decision = away.TossPref
-		}
-	}
-	if toss.Decision == "" {
-		toss.Decision = "chase"
-	}
-
-	var first, second Lineup
-	var firstSide, secondSide string
-	winnerBatsFirst := toss.Decision == "bat"
-	if (toss.WinnerSide == "home" && winnerBatsFirst) || (toss.WinnerSide == "away" && !winnerBatsFirst) {
-		first, second = home, away
-		firstSide, secondSide = "home", "away"
-	} else {
-		first, second = away, home
-		firstSide, secondSide = "away", "home"
-	}
-
-	res := MatchResult{Toss: toss}
-	inn1, balls1 := playInnings(rng, 0, first, second, firstSide, secondSide, -1)
-	res.Innings[0] = inn1
-	res.Balls = append(res.Balls, balls1...)
-	target := inn1.Runs + 1
-	inn2, balls2 := playInnings(rng, 1, second, first, secondSide, firstSide, target)
-	res.Innings[1] = inn2
-	res.Balls = append(res.Balls, balls2...)
-
-	res.Winner, res.Margin = decide(firstSide, secondSide, inn1, inn2)
-	res.POTM = playerOfMatch(res, home, away)
-	return res, nil
 }
 
 func decide(firstSide, secondSide string, a, b InningsResult) (string, string) {
@@ -85,7 +38,25 @@ func plural(n int) string {
 	return "s"
 }
 
-func playInnings(rng *rand.Rand, innings int, batting, bowling Lineup, batSide, bowlSide string, target int) (InningsResult, []BallEvent) {
+// inningsCtx is everything one innings needs.
+type inningsCtx struct {
+	innings           int
+	batting, bowling  Lineup
+	batSide, bowlSide string
+	target            int // -1 when batting first
+	pitch             Pitch
+	cond              Conditions // applies to the second innings and Super Over
+	batCall, bowlCall BreakCall
+	mem               *CaptainMemory
+	overs, maxWickets int
+	superOver         bool
+	noPowerplay       bool // measurement only
+}
+
+func playInnings(rng *rand.Rand, ctx *inningsCtx) (InningsResult, []BallEvent) {
+	innings, batting, bowling, batSide, bowlSide, target, pitch := ctx.innings, ctx.batting, ctx.bowling, ctx.batSide, ctx.bowlSide, ctx.target, ctx.pitch
+	batCaptain, bowlCaptain := CaptainOf(batting), CaptainOf(bowling)
+	var calls []OverCall
 	order := make([]*Card, 0, 7)
 	for _, id := range batting.BattingOrder {
 		order = append(order, CardByID(batting.Cards, id))
@@ -114,18 +85,87 @@ func playInnings(rng *rand.Rand, innings int, batting, bowling Lineup, batSide, 
 	var events []BallEvent
 	ballsFaced := map[string]int{}
 	reprieve := map[string]int{}
+	dotStreak := 0 // consecutive dot balls, for pressure
+	freeHit := false
+	cond := CondClear
+	if innings >= 1 {
+		cond = ctx.cond
+	}
+	calm := 50
+	if batCaptain != nil {
+		calm = CaptaincyOf(*batCaptain).Calm
+	}
 
-	for over := 0; over < OversPerInnings && wkts < MaxWickets; over++ {
+	for over := 0; over < ctx.overs && wkts < ctx.maxWickets; over++ {
 		if target > 0 && runs >= target {
 			break
 		}
 		bowler := CardByID(bowling.Cards, bowling.BowlingPlan[over])
+		sit := situation{over: over, wickets: wkts, runs: runs, target: target}
+		if ctx.superOver {
+			sit.over = OversPerInnings - 1 // treat as a last over
+		}
+
+		// Captains' calls for this over: a fixed plan if one was given, otherwise the captain decides.
+		app, fld := batting.Tactics.ApproachFor(over), bowling.Tactics.FieldFor(over)
+		if len(batting.Tactics.BatApproach) == 0 && batCaptain != nil {
+			app = chooseApproach(rng, *batCaptain, sit, ctx.mem.FieldCalls[bowlSide], ctx.batCall)
+		}
+		if len(bowling.Tactics.FieldPlan) == 0 && bowlCaptain != nil {
+			fld = chooseField(rng, *bowlCaptain, sit, ctx.mem.BatCalls[batSide], ctx.bowlCall)
+		}
+		call := OverCall{Over: over, Approach: app, Field: fld, BatRead: app == BestApproachVs(fld), FieldRead: fld == BestFieldVs(app)}
+
+		// At most one masterstroke per side per match.
+		var batStroke, bowlStroke *Masterstroke
+		if !ctx.superOver {
+			if batCaptain != nil && !ctx.mem.Used[batSide] {
+				if m, ok := maybeMasterstroke(rng, *batCaptain, "bat", sit, bowler); ok {
+					batStroke, ctx.mem.Used[batSide] = &m, true
+					call.Masterstroke, call.MasterstrokeBy = m.Name, "bat"
+				}
+			}
+			if bowlCaptain != nil && !ctx.mem.Used[bowlSide] && batStroke == nil {
+				if m, ok := maybeMasterstroke(rng, *bowlCaptain, "bowl", sit, bowler); ok {
+					bowlStroke, ctx.mem.Used[bowlSide] = &m, true
+					call.Masterstroke, call.MasterstrokeBy = m.Name, "bowl"
+				}
+			}
+		}
+		calls = append(calls, call)
+		ctx.mem.BatCalls[batSide] = append(ctx.mem.BatCalls[batSide], app)
+		ctx.mem.FieldCalls[bowlSide] = append(ctx.mem.FieldCalls[bowlSide], fld)
+
 		legalInOver := 0
-		for legalInOver < BallsPerOver && wkts < MaxWickets {
+		for legalInOver < BallsPerOver && wkts < ctx.maxWickets {
 			if target > 0 && runs >= target {
 				break
 			}
-			ev := resolveBall(rng, innings, over, legalInOver, seq, striker, non, bowler, batting, bowling, wkts, runs, target, ballsFaced[striker.ID], reprieve[striker.ID])
+			tc := ballTactics{
+				approach: app, field: fld, pressure: dotStreak, pitch: pitch, cond: cond,
+				freeHit: freeHit, link: Link(striker, non), calm: calm,
+				armband: batCaptain != nil && striker.ID == batCaptain.ID,
+				batStroke: batStroke, bowlStroke: bowlStroke,
+				rival: bowling.Rivals[bowler.PlayerID+"|"+striker.PlayerID] >= RivalDismissals,
+				powerplay: !ctx.superOver && !ctx.noPowerplay && PhaseOf(over) == PhasePowerplay,
+			}
+			ev := resolveBall(rng, innings, over, legalInOver, seq, striker, non, bowler, batting, bowling, wkts, runs, target, ballsFaced[striker.ID], reprieve[striker.ID], tc)
+			if batStroke != nil {
+				ev.Masterstroke, ev.MasterstrokeBy = batStroke.Name, "bat"
+			} else if bowlStroke != nil {
+				ev.Masterstroke, ev.MasterstrokeBy = bowlStroke.Name, "bowl"
+			}
+			// A no-ball earns a free hit; it carries over wides until a legal ball is bowled.
+			if ev.Outcome == OutcomeNoBall {
+				freeHit = true
+			} else if ev.Legal {
+				freeHit = false
+			}
+			if ev.Legal && ev.Runs == 0 && ev.Dismissal == nil {
+				dotStreak++
+			} else {
+				dotStreak = 0
+			}
 			ev.Score = runs + ev.Runs
 			if ev.Dismissal != nil {
 				ev.Wickets = wkts + 1
@@ -203,7 +243,7 @@ func playInnings(rng *rand.Rand, innings int, batting, bowling Lineup, batSide, 
 				bs.Dismissal = ev.Dismissal
 				bs.NotOut = false
 				wkts++
-				if nextBat < len(order) && wkts < MaxWickets {
+				if nextBat < len(order) && wkts < ctx.maxWickets {
 					striker = order[nextBat]
 					nextBat++
 				} else {
@@ -230,7 +270,8 @@ func playInnings(rng *rand.Rand, innings int, batting, bowling Lineup, batSide, 
 		Byes:        byes,
 		Wides:       wides,
 		NoBalls:     nbs,
-		Declared:    wkts >= MaxWickets,
+		Declared:    wkts >= ctx.maxWickets,
+		Calls:       calls,
 	}
 	for _, id := range batting.BattingOrder {
 		if s := batStats[id]; s != nil {
@@ -269,7 +310,22 @@ func containsBowler(bs []BowlerScore, id string) bool {
 	return false
 }
 
-func resolveBall(rng *rand.Rand, innings, over, ball, seq int, striker, non, bowler *Card, batting, bowling Lineup, wkts, runs, target, faced, drops int) BallEvent {
+type ballTactics struct {
+	approach              Approach
+	field                 FieldPlan
+	pressure              int
+	pitch                 Pitch
+	cond                  Conditions
+	freeHit               bool
+	link                  int // chemistry between the batters
+	calm                  int // batting captain's calm
+	armband               bool
+	batStroke, bowlStroke *Masterstroke
+	rival                 bool
+	powerplay             bool
+}
+
+func resolveBall(rng *rand.Rand, innings, over, ball, seq int, striker, non, bowler *Card, batting, bowling Lineup, wkts, runs, target, faced, drops int, tc ballTactics) BallEvent {
 	ev := BallEvent{
 		Innings: innings, Over: over, Ball: ball, Seq: seq,
 		BowlerID: bowler.ID, StrikerID: striker.ID,
@@ -279,128 +335,17 @@ func resolveBall(rng *rand.Rand, innings, over, ball, seq int, striker, non, bow
 		ev.NonStrikerID = non.ID
 	}
 
-	sAttr := Effective(*striker)
-	bAttr := Effective(*bowler)
 	wk := Keeper(bowling.Cards)
-
-	chasing := target > 0
-	ballsLeft := (OversPerInnings-over)*BallsPerOver - ball
-	if ballsLeft < 1 {
-		ballsLeft = 1
-	}
-	need := 0
-	rrr := 0.0
-	if chasing {
-		need = target - runs
-		rrr = float64(need) / (float64(ballsLeft) / 6.0)
-	}
-	tightChase := chasing && rrr > 12
-	lastOver := over == OversPerInnings-1
-
-	bt := applyBatterTraits(*striker, over, wkts, chasing)
-	bo := applyBowlerTraits(*bowler, over, faced, tightChase)
-	var triggered []string
-	triggered = append(triggered, bt.triggered...)
-	triggered = append(triggered, bo.triggered...)
-
-	sAttr.Power = clamp(sAttr.Power+bt.power, 1, 99)
-	sAttr.Temperament = clamp(sAttr.Temperament+bt.temp, 1, 99)
-	bAttr.Accuracy = clamp(bAttr.Accuracy+bo.bowlAcc, 1, 99)
-	bAttr.Variation = clamp(bAttr.Variation+bo.varExtra, 1, 99)
-	bAttr.DeathBowling = clamp(bAttr.DeathBowling+bo.death, 1, 99)
-
-	if wk != nil && HasTrait(*wk, "Keeper-Captain") {
-		bAttr.Accuracy = clamp(bAttr.Accuracy+3, 1, 99)
-		triggered = append(triggered, "Keeper-Captain")
-	}
-	if HasTrait(*striker, "Spin Basher") && bowler.BowlType == BowlSpin {
-		sAttr.VsSpin = clamp(sAttr.VsSpin+8, 1, 99)
-		triggered = append(triggered, "Spin Basher")
-	}
-	if HasTrait(*striker, "Pace Basher") && bowler.BowlType == BowlPace {
-		sAttr.VsPace = clamp(sAttr.VsPace+8, 1, 99)
-		triggered = append(triggered, "Pace Basher")
-	}
-
-	delta := BatterSkill(*striker, bowler.BowlType) - BowlerSkill(*bowler)
-	// rebuild skill with modified attrs
-	vs := sAttr.VsPace
-	if bowler.BowlType == BowlSpin {
-		vs = sAttr.VsSpin
-	}
-	bSkill := float64(sAttr.Technique)*0.5 + float64(sAttr.Power)*0.3 + float64(vs)*0.2
-	oSkill := float64(bAttr.Accuracy)*0.4 + float64(bAttr.Variation)*0.3 + float64(bAttr.WicketTaking)*0.3
-	if lastOver || tightChase {
-		oSkill += float64(bAttr.DeathBowling) * 0.15
-	}
-	delta = bSkill - oSkill
-
-	w := baseWeights()
-	// accuracy: fewer extras, more dots
-	accShift := (bAttr.Accuracy - 70) / 8
-	w.wide = clamp(w.wide-accShift, 1, 8)
-	w.noball = clamp(w.noball-accShift/2, 0, 4)
-	w.dot += accShift
-
-	shift := int(delta / 3)
-	w.four = clamp(w.four+shift, 4, 22)
-	w.six = clamp(w.six+shift/2, 2, 16)
-	w.one = clamp(w.one+shift/4, 18, 38)
-	w.dot = clamp(w.dot-shift, 14, 42)
-	w.wicket = clamp(w.wicket-shift/2, 3, 14)
-
-	if sAttr.Power > 75 {
-		w.six += (sAttr.Power - 75) / 8
-		w.four += (sAttr.Power - 75) / 12
-	}
-	if sAttr.Timing > 70 {
-		w.one += (sAttr.Timing - 70) / 6
-		w.dot = clamp(w.dot-(sAttr.Timing-70)/8, 12, 40)
-	}
-	if faced >= 4 {
-		w.wicket = clamp(w.wicket-2, 2, 14)
-		w.one += 2
-	}
-	if drops > 0 {
-		w.wicket = clamp(w.wicket-1, 2, 14)
-	}
-	if tightChase || lastOver {
-		w.four += 3
-		w.six += 3
-		w.wicket += 2
-		w.dot = clamp(w.dot-4, 10, 40)
-	}
-	if chasing && rrr > 10 {
-		agg := int(math.Min(8, (rrr-10)*1.2))
-		w.four += agg
-		w.six += agg / 2
-		w.wicket += agg / 2
-	}
-	if wkts >= 4 {
-		w.wicket = clamp(w.wicket-1, 2, 14)
-	}
-	// temperament under pressure
-	if tightChase || lastOver || wkts >= 3 {
-		t := (sAttr.Temperament - 70) / 8
-		w.wicket = clamp(w.wicket-t, 2, 14)
-		w.one += t
-	}
-	if striker.BatHand == HandLeft {
-		w.wide++
-	}
-
-	w.four = int(float64(w.four) * bt.boundMul)
-	w.six = int(float64(w.six) * bt.boundMul * bo.sixMul)
-	w.wicket = int(float64(w.wicket) * bt.wicketMul * bo.wicketMul)
-	if w.four < 1 {
-		w.four = 1
-	}
-	if w.six < 1 {
-		w.six = 1
-	}
-	if w.wicket < 1 {
-		w.wicket = 1
-	}
+	bc := ComputeBall(BallInput{
+		Striker: striker, Bowler: bowler, Keeper: wk,
+		Innings: innings, Over: over, Ball: ball, Wickets: wkts, Runs: runs, Target: target,
+		Faced: faced, Drops: drops, Approach: tc.approach, Field: tc.field, Pressure: tc.pressure, Pitch: tc.pitch,
+		Conditions: tc.cond, FreeHit: tc.freeHit, Link: tc.link, CaptainCalm: tc.calm, Armband: tc.armband,
+		BatStroke: tc.batStroke, BowlStroke: tc.bowlStroke, Rival: tc.rival, Powerplay: tc.powerplay,
+	})
+	w, sAttr, bAttr, triggered, tightChase := bc.w, bc.sAttr, bc.bAttr, bc.Triggered, bc.TightChase
+	ev.Approach, ev.Field, ev.Pressure, ev.Matchup, ev.Counter = string(tc.approach), string(tc.field), bc.Pressure, bc.Matchup, bc.Counter
+	ev.Powerplay, ev.FreeHit, ev.Chemistry, ev.Rivalry = tc.powerplay, tc.freeHit, tc.link, tc.rival
 
 	out := pickOutcome(rng, w)
 	ev.Outcome = out
@@ -446,7 +391,7 @@ func resolveBall(rng *rand.Rand, innings, over, ball, seq int, striker, non, bow
 	}
 
 	if out == OutcomeWicket {
-		return resolveWicketChance(rng, ev, striker, bowler, batting, bowling, wk, bAttr, sAttr, tightChase)
+		return resolveWicketChance(rng, ev, striker, bowler, batting, bowling, wk, bAttr, sAttr, tightChase, PitchByCode(tc.pitch).ExtraSeamEdges+ConditionsByCode(tc.cond).SeamEdges, ConditionsByCode(tc.cond).CatchDrop)
 	}
 
 	runsScored := 0
@@ -466,10 +411,13 @@ func resolveBall(rng *rand.Rand, innings, over, ball, seq int, striker, non, bow
 	}
 
 	// running upgrade
-	if runsScored == 1 && sAttr.Running > 78 && rng.Intn(100) < (sAttr.Running-78)*2 {
+	// Running between the wickets: fast runners and pairs with chemistry turn ones into twos.
+	up1 := max(0, (sAttr.Running-78)*2) + tc.link*Chemistry.RunUpgradePerLink
+	up2 := max(0, (sAttr.Running-82)*2) // a third run is down to raw speed
+	if runsScored == 1 && up1 > 0 && rng.Intn(100) < up1 {
 		runsScored = 2
 		ev.Outcome = OutcomeTwo
-	} else if runsScored == 2 && sAttr.Running > 82 && rng.Intn(100) < (sAttr.Running-82)*2 {
+	} else if runsScored == 2 && up2 > 0 && rng.Intn(100) < up2 {
 		runsScored = 3
 		ev.Outcome = OutcomeThree
 	}
@@ -492,7 +440,7 @@ func resolveBall(rng *rand.Rand, innings, over, ball, seq int, striker, non, bow
 		f := ZoneFielder(bowling.Cards, bowler.ID, zone)
 		if f != nil {
 			gf := Effective(*f).GroundField
-			if runsScored == 4 && rng.Intn(100) < (gf-60)/5 {
+			if runsScored == 4 && !tc.powerplay && rng.Intn(100) < (gf-60)/5 { // powerplay: no sweepers to stop it
 				runsScored = 2 + rng.Intn(2) // 2 or 3
 				ev.FieldingSave = true
 				if runsScored == 2 {
@@ -517,7 +465,7 @@ func resolveBall(rng *rand.Rand, innings, over, ball, seq int, striker, non, bow
 
 	// run out check
 	if runsScored >= 1 && runsScored <= 3 {
-		if d := tryRunOut(rng, striker, non, bowler, bowling, zone, runsScored, tightChase, wk); d != nil {
+		if d := tryRunOut(rng, striker, non, bowler, bowling, zone, runsScored, tightChase, wk, tc.link); d != nil {
 			ev.Outcome = OutcomeWicket
 			ev.Dismissal = d
 			ev.Runs = runsScored - 1
@@ -534,8 +482,8 @@ func resolveBall(rng *rand.Rand, innings, over, ball, seq int, striker, non, bow
 	return ev
 }
 
-func resolveWicketChance(rng *rand.Rand, ev BallEvent, striker, bowler *Card, batting, bowling Lineup, wk *Card, bAttr, sAttr Attributes, aggressive bool) BallEvent {
-	kind := pickDismissalKind(rng, bowler.BowlType, bAttr.Movement, aggressive)
+func resolveWicketChance(rng *rand.Rand, ev BallEvent, striker, bowler *Card, batting, bowling Lineup, wk *Card, bAttr, sAttr Attributes, aggressive bool, seamEdges, catchDrop int) BallEvent {
+	kind := pickDismissalKind(rng, bowler.BowlType, bAttr.Movement, aggressive || ev.Approach == string(ApproachAttack), seamEdges)
 	var fielder *Card
 	var ctype ChanceType
 	converted := true
@@ -584,7 +532,7 @@ func resolveWicketChance(rng *rand.Rand, ev BallEvent, striker, bowler *Card, ba
 			rate = int(float64(rate) * fm.catchMul)
 		}
 		// conversion curve: 60 -> 52%, 90 -> 88%
-		conv := 16 + (rate*4)/5
+		conv := 16 + (rate*4)/5 - catchDrop // dew: a wet ball slips
 		if rng.Intn(100) >= conv {
 			converted = false
 		} else {
@@ -619,7 +567,7 @@ func resolveWicketChance(rng *rand.Rand, ev BallEvent, striker, bowler *Card, ba
 	return ev
 }
 
-func pickDismissalKind(rng *rand.Rand, bt BowlType, movement int, aggressive bool) DismissalType {
+func pickDismissalKind(rng *rand.Rand, bt BowlType, movement int, aggressive bool, seamEdges int) DismissalType {
 	type pair struct {
 		k DismissalType
 		w int
@@ -634,6 +582,13 @@ func pickDismissalKind(rng *rand.Rand, bt BowlType, movement int, aggressive boo
 		for i := range ps {
 			if ps[i].k == DismissCaughtWK {
 				ps[i].w += 8
+			}
+		}
+	}
+	if bt == BowlPace && seamEdges > 0 {
+		for i := range ps {
+			if ps[i].k == DismissCaughtWK {
+				ps[i].w += seamEdges
 			}
 		}
 	}
@@ -659,7 +614,7 @@ func pickDismissalKind(rng *rand.Rand, bt BowlType, movement int, aggressive boo
 	return DismissCaught
 }
 
-func tryRunOut(rng *rand.Rand, striker, non, bowler *Card, bowling Lineup, zone Zone, runs int, tight bool, wk *Card) *Dismissal {
+func tryRunOut(rng *rand.Rand, striker, non, bowler *Card, bowling Lineup, zone Zone, runs int, tight bool, wk *Card, link int) *Dismissal {
 	f := ZoneFielder(bowling.Cards, bowler.ID, zone)
 	if f == nil {
 		return nil
@@ -681,7 +636,9 @@ func tryRunOut(rng *rand.Rand, striker, non, bowler *Card, bowling Lineup, zone 
 	if risk < 1 {
 		risk = 1
 	}
-	if rng.Intn(100) >= risk {
+	// Good partners call and run well: each link level cuts the risk by a share.
+	p := float64(risk) * (1 - float64(link*Chemistry.RunOutCutPerLink)/100)
+	if rng.Float64()*100 >= p {
 		return nil
 	}
 	d := &Dismissal{Type: DismissRunOut, FielderID: f.ID}
