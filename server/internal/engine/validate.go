@@ -40,6 +40,12 @@ func ValidateLineup(l Lineup) error {
 		}
 		orderSeen[id] = true
 	}
+	if l.CaptainID != "" && !seen[l.CaptainID] {
+		return fmt.Errorf("the captain must be one of your seven")
+	}
+	if err := ValidateTactics(l.Tactics); err != nil {
+		return err
+	}
 	return ValidateBowlingPlan(l)
 }
 

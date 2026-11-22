@@ -131,6 +131,12 @@ type Card struct {
 	XP       int        `json:"xp"`
 	Attrs    Attributes `json:"attrs"`
 	Traits   []string   `json:"traits"`
+
+	// Captaincy is filled from the catalog (curated for real captains,
+	// derived for everyone else). Nil is derived on demand.
+	Captaincy  *Captaincy `json:"captaincy,omitempty"`
+	CaptainRep int        `json:"captainRep,omitempty"` // reputation 0-100 earned as captain
+	Partners   []string   `json:"partners,omitempty"`   // player IDs of well-known batting partners
 }
 
 type Lineup struct {
@@ -138,7 +144,12 @@ type Lineup struct {
 	Cards        []Card   `json:"cards"`
 	BattingOrder []string `json:"battingOrder"`
 	BowlingPlan  []string `json:"bowlingPlan"`
-	TossPref     string   `json:"tossPref"`
+	TossPref     string   `json:"tossPref"` // "" lets the captain decide
+	Tactics      Tactics  `json:"tactics"`  // fixed plan; empty lets the captain decide each over
+	CaptainID    string   `json:"captainId"`
+	// Rivals: dismissals by this side's bowlers of opposing batters in the
+	// owner's history, keyed "bowlerPlayerID|batterPlayerID". Built per match.
+	Rivals map[string]int `json:"-"`
 }
 
 type TossResult struct {
@@ -190,6 +201,17 @@ type BallEvent struct {
 	FieldingSave    bool     `json:"fieldingSave,omitempty"`
 	TraitsTriggered []string `json:"traitsTriggered,omitempty"`
 	Commentary      string   `json:"commentary"`
+	Approach        string   `json:"approach,omitempty"` // batting approach in force
+	Field           string   `json:"field,omitempty"`    // field plan in force
+	Pressure        int      `json:"pressure,omitempty"` // dot balls in a row before this ball
+	Matchup         string   `json:"matchup,omitempty"`  // e.g. "weak vs spin"
+	Counter         string   `json:"counter,omitempty"`  // strategy counter in force, e.g. "Holing out"
+	Powerplay       bool     `json:"powerplay,omitempty"`
+	FreeHit         bool     `json:"freeHit,omitempty"`
+	Masterstroke    string   `json:"masterstroke,omitempty"` // name of a masterstroke active this over
+	MasterstrokeBy  string   `json:"masterstrokeBy,omitempty"` // "bat" or "bowl"
+	Chemistry       int      `json:"chemistry,omitempty"` // link level 0-3 between the two batters
+	Rivalry         bool     `json:"rivalry,omitempty"`   // the bowler "has his number"
 	Score           int      `json:"score"`
 	Wickets         int      `json:"wickets"`
 }
@@ -235,6 +257,7 @@ type InningsResult struct {
 	Bowlers     []BowlerScore  `json:"bowlers"`
 	Fielders    []FielderScore `json:"fielders"`
 	Declared    bool           `json:"allOut"`
+	Calls       []OverCall     `json:"calls,omitempty"` // what each captain chose, over by over
 }
 
 type MatchResult struct {
@@ -244,4 +267,9 @@ type MatchResult struct {
 	Margin  string           `json:"margin"`
 	Toss    TossResult       `json:"toss"`
 	POTM    string           `json:"playerOfMatch"`
+	Pitch   Pitch            `json:"pitch"`
+
+	Conditions Conditions       `json:"conditions,omitempty"` // second-innings twist
+	BreakCalls map[string]string `json:"breakCalls,omitempty"` // side -> BreakCall code
+	SuperOver  *SuperOverResult `json:"superOver,omitempty"`
 }

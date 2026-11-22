@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"log"
 	"context"
 	"encoding/json"
 	"errors"
@@ -62,10 +63,14 @@ func (s *Server) Router() http.Handler {
 	})
 	r.Post("/auth/register", s.register)
 	r.Post("/auth/login", s.login)
+	// Public, read-only: how the match engine works.
+	r.Get("/engine/model", s.engineModel)
+	r.Post("/engine/odds", s.engineOdds)
 
 	r.Group(func(r chi.Router) {
 		r.Use(s.auth)
 		r.Get("/me", s.me)
+		r.Get("/me/stats", s.myStats)
 		r.Get("/cards", s.listCards)
 		r.Post("/cards/{id}/train", s.train)
 		r.Get("/squad", s.getSquad)
@@ -74,6 +79,8 @@ func (s *Server) Router() http.Handler {
 		r.Get("/matches", s.myMatches)
 		r.Get("/matches/{id}", s.getMatch)
 		r.Post("/matches/{id}/lineup", s.lockLineup)
+		r.Post("/matches/{id}/break", s.submitBreak)
+		r.Post("/matches/{id}/superover", s.submitSuperOver)
 		r.Get("/matches/{id}/scorecard", s.scorecard)
 		r.Get("/leaderboard", s.leaderboard)
 		r.Get("/traits", s.traits)
@@ -182,19 +189,36 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	u := userFrom(r)
 	next := trophy.NextArena(u.Trophies)
+	streak, _ := s.Store.WinStreak(r.Context(), u.ID)
 	writeJSON(w, 200, map[string]any{
-		"user": publicUser(u),
+		"user":      publicUser(u),
 		"nextArena": next,
+		"streak": map[string]any{
+			"current": streak, "nextWinBonus": trophy.StreakBonus(streak + 1),
+			"boostAt": trophy.StreakBoostAt, "nextWinBoosted": streak+1 >= trophy.StreakBoostAt,
+		},
 	})
 }
 
 func (s *Server) listCards(w http.ResponseWriter, r *http.Request) {
-	cs, err := s.Store.CardsForUser(r.Context(), userFrom(r).ID)
+	u := userFrom(r)
+	cs, err := s.Store.CardsForUser(r.Context(), u.ID)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	writeJSON(w, 200, mapCards(cs))
+	forms, err := s.Store.CardForms(r.Context(), u.ID)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	out := mapCards(cs)
+	for i, c := range cs {
+		if f, ok := forms[c.ID]; ok {
+			out[i]["form"] = f
+		}
+	}
+	writeJSON(w, 200, out)
 }
 
 func (s *Server) train(w http.ResponseWriter, r *http.Request) {
@@ -205,8 +229,9 @@ func (s *Server) train(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		SacrificeIDs []string `json:"sacrificeIds"`
+		DryRun       bool     `json:"dryRun"` // preview only: nothing is changed
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&body); err != nil {
 		http.Error(w, "invalid body", 400)
 		return
 	}
@@ -219,35 +244,45 @@ func (s *Server) train(w http.ResponseWriter, r *http.Request) {
 		}
 		sids = append(sids, uid)
 	}
-	c, xp, err := s.Match.Train(r.Context(), userFrom(r), id, sids)
+	if body.DryRun {
+		res, err := s.Match.PreviewTraining(r.Context(), userFrom(r), id, sids)
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		writeJSON(w, 200, map[string]any{"result": res, "xpGained": res.XPGained})
+		return
+	}
+	c, res, err := s.Match.Train(r.Context(), userFrom(r), id, sids)
 	if err != nil {
 		http.Error(w, err.Error(), 400)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"card": mapCard(c), "xpGained": xp})
+	writeJSON(w, 200, map[string]any{"card": mapCard(c), "result": res, "xpGained": res.XPGained})
 }
 
 func (s *Server) getSquad(w http.ResponseWriter, r *http.Request) {
-	cards, bat, bowl, err := s.Store.Squad(r.Context(), userFrom(r).ID)
+	sq, err := s.Store.Squad(r.Context(), userFrom(r).ID)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"cardIds": cards, "battingOrder": bat, "bowlingPlan": bowl})
+	writeJSON(w, 200, map[string]any{
+		"cardIds": sq.CardIDs, "battingOrder": sq.BattingOrder, "bowlingPlan": sq.BowlingPlan,
+		"captainId": sq.CaptainID,
+	})
 }
 
+// saveSquad stores the user's default team and strategy after validating it
+// with the same rules as a match lineup.
 func (s *Server) saveSquad(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		CardIDs      []string `json:"cardIds"`
-		BattingOrder []string `json:"battingOrder"`
-		BowlingPlan  []string `json:"bowlingPlan"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	var body match.LineupReq
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16384)).Decode(&body); err != nil {
 		http.Error(w, "invalid body", 400)
 		return
 	}
-	if err := s.Store.SaveSquad(r.Context(), userFrom(r).ID, parseU(body.CardIDs), parseU(body.BattingOrder), parseU(body.BowlingPlan)); err != nil {
-		http.Error(w, err.Error(), 500)
+	if err := s.Match.SaveDefault(r.Context(), userFrom(r), body); err != nil {
+		http.Error(w, err.Error(), 400)
 		return
 	}
 	writeJSON(w, 200, map[string]string{"ok": "true"})
@@ -306,7 +341,17 @@ func (s *Server) getMatch(w http.ResponseWriter, r *http.Request) {
 		m, _ = s.Match.FallbackBotIfNeeded(r.Context(), m, u)
 	}
 	if m.Status == match.StatusLineup {
-		_ = s.Match.AutoPickIfTimedOut(r.Context(), m, u)
+		// Only locks an idle player-vs-player opponent after the grace period;
+		// never the viewer's own lineup in a bot match.
+		if err := s.Match.LockStaleLineup(r.Context(), m); err != nil {
+			log.Printf("match %s: stale lineup: %v", m.ID, err)
+		}
+		m, _ = s.Store.MatchByID(r.Context(), id)
+	}
+	if m.Status == match.StatusBreak || m.Status == match.StatusSuperOver {
+		if err := s.Match.ResolveStalePause(r.Context(), m); err != nil {
+			log.Printf("match %s: stale pause: %v", m.ID, err)
+		}
 		m, _ = s.Store.MatchByID(r.Context(), id)
 	}
 	writeJSON(w, 200, s.matchDTO(r.Context(), m, u, true))
@@ -450,6 +495,9 @@ func (s *Server) matchDTO(ctx context.Context, m store.MatchRow, viewer store.Us
 			dto["battingOrder"] = l.BattingOrder
 			dto["bowlingPlan"] = l.BowlingPlan
 			dto["tossPref"] = l.TossPref
+			if l.CaptainID != nil {
+				dto["captainId"] = l.CaptainID.String()
+			}
 		}
 		return dto
 	}
@@ -508,8 +556,20 @@ func (s *Server) matchDTO(ctx context.Context, m store.MatchRow, viewer store.Us
 		"homeLineup": lineupDTO(homeL, homeMine),
 		"awayLineup": lineupDTO(awayL, !homeMine),
 		"toss": toss, "result": result, "ballLog": balls,
+		"pitch": engine.PitchByCode(engine.PitchForSeed(m.Seed)),
+		"opponentCaptain": opponentCaptain(m, homeL, awayL, homeMine),
 		"trophyDeltaHome": m.TrophyDeltaHome, "trophyDeltaAway": m.TrophyDeltaAway,
 		"rewards": rewards, "youAreHome": homeMine,
+		"ratings": func() map[string]float64 {
+			if m.Status != match.StatusComplete {
+				return nil
+			}
+			return matchRatings(m.Result)
+		}(),
+		"pause":       s.pauseDTO(m, lus, viewer),
+		"rivalries":   s.matchRivalries(ctx, viewer, homeL, awayL),
+		"lineupDeadline": match.LineupDeadline(m, lus, viewer.ID),
+		"xpEarned": s.matchXP(ctx, m.ID, viewer.ID),
 		"homeUserId": m.HomeUserID,
 	}
 	if m.AwayUserID != nil {
@@ -539,6 +599,7 @@ func mapCard(c store.CardRow) map[string]any {
 		}(), "levelCap": engine.LevelCap(e.Rarity),
 		"attrs": e.Attrs, "effective": engine.Effective(e), "overall": engine.Overall(e),
 		"traits": e.Traits, "createdAt": c.CreatedAt,
+		"captaincy": engine.CaptaincyOf(e), "captainRep": c.CaptainRep, "partners": e.Partners,
 	}
 }
 
@@ -561,16 +622,6 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func parseU(ss []string) []uuid.UUID {
-	var out []uuid.UUID
-	for _, s := range ss {
-		if id, err := uuid.Parse(s); err == nil {
-			out = append(out, id)
-		}
-	}
-	return out
-}
-
 func orEmpty(b []byte) []byte {
 	if len(b) == 0 {
 		return []byte("null")
@@ -591,4 +642,25 @@ func atoi(s string, d int) int {
 		return d
 	}
 	return n
+}
+
+
+// matchRatings rates every player in a finished match (nil before then).
+func matchRatings(result []byte) map[string]float64 {
+	if len(result) == 0 {
+		return nil
+	}
+	var res engine.MatchResult
+	if json.Unmarshal(result, &res) != nil {
+		return nil
+	}
+	return engine.PlayerRatings(res)
+}
+
+func (s *Server) matchXP(ctx context.Context, matchID, userID uuid.UUID) map[string]int {
+	xp, err := s.Store.MatchXP(ctx, matchID, userID)
+	if err != nil || len(xp) == 0 {
+		return nil
+	}
+	return xp
 }
