@@ -1,6 +1,7 @@
 package cards
 
 import (
+	"math"
 	"math/rand"
 
 	"github.com/sudhanshushekhar/cricket-card-game/internal/engine"
@@ -68,3 +69,35 @@ func RollRarity(rng *rand.Rand, arena string) engine.Rarity {
 func LossXP() int { return 18 }
 
 func ArenaOf(trophies int) string { return trophy.ArenaFor(trophies).Name }
+
+// Performance XP: every card that plays earns a little XP from its match
+// rating, win or lose. Kept small next to training (level 2 needs 80 XP).
+const (
+	PerfXPMin        = 2 // floor for any appearance
+	PerfXPPerPoint   = 3 // per rating point above PerfXPFromRating
+	PerfXPFromRating = 5.0
+)
+
+func PerformanceXP(rating float64) int {
+	xp := PerfXPMin + int(math.Round((rating-PerfXPFromRating)*PerfXPPerPoint))
+	if xp < PerfXPMin {
+		return PerfXPMin
+	}
+	return xp
+}
+
+// ApplyXP adds gain to a card, levelling up until the rarity's cap. XP that
+// would go past the cap is returned as wasted instead of silently vanishing.
+func ApplyXP(level, xp int, rarity engine.Rarity, gain int) (newLevel, newXP, wasted int) {
+	cap := engine.LevelCap(rarity)
+	newLevel, newXP = level, xp+gain
+	for newLevel < cap && newXP >= XPToNext(newLevel) {
+		newXP -= XPToNext(newLevel)
+		newLevel++
+	}
+	if newLevel >= cap {
+		wasted = newXP
+		newXP = 0
+	}
+	return newLevel, newXP, wasted
+}

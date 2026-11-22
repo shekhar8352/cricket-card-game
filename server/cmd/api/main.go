@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"syscall"
 	"time"
 
@@ -24,7 +25,7 @@ func main() {
 
 	dbURL := env("DATABASE_URL", "postgres://cricket:cricket@localhost:5432/cricket?sslmode=disable")
 	redisURL := env("REDIS_URL", "redis://localhost:6379")
-	addr := env("HTTP_ADDR", ":8080")
+	addr := env("HTTP_ADDR", ":8000")
 	secret := env("JWT_SECRET", "dev-cricket-secret-change-me")
 
 	st, err := waitStore(ctx, dbURL)
@@ -33,9 +34,13 @@ func main() {
 	}
 	defer st.Close()
 
-	mig := filepath.Join(findRoot(), "migrations", "001_init.sql")
-	if err := st.Migrate(ctx, mig); err != nil {
-		log.Printf("migrate: %v", err)
+	// Apply every migration in name order. Each file is written to be re-runnable.
+	migs, _ := filepath.Glob(filepath.Join(findRoot(), "migrations", "*.sql"))
+	sort.Strings(migs)
+	for _, mig := range migs {
+		if err := st.Migrate(ctx, mig); err != nil {
+			log.Printf("migrate %s: %v", filepath.Base(mig), err)
+		}
 	}
 	if err := st.Seed(ctx); err != nil {
 		log.Fatal("seed:", err)

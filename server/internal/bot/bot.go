@@ -73,8 +73,11 @@ func Generate(seed int64, userTrophies int, catalog []engine.Card) Deck {
 		Cards:        picked,
 		BattingOrder: engine.DefaultBattingOrder(picked),
 		BowlingPlan:  bowlingPlan(picked, rng),
-		TossPref:     "chase",
+		TossPref:     "", // the captain calls it
 	}
+	// Captain: one of the three best captains in the side, drawn last so the
+	// cards a seed produces don't change.
+	lu.CaptainID = pickBotCaptain(rng, picked)
 	return Deck{Profile: p, Lineup: lu}
 }
 
@@ -172,4 +175,17 @@ func botName(rng *rand.Rand) string {
 	first := []string{"Ravi", "Alex", "Sam", "Imran", "Chris", "Dev", "Kai", "Omar", "Ben", "Arjun"}
 	last := []string{"XI", "Strikers", "Knights", "Stars", "Wolves", "Titans", "Riders", "Kings"}
 	return fmt.Sprintf("%s %s", first[rng.Intn(len(first))], last[rng.Intn(len(last))])
+}
+
+func pickBotCaptain(rng *rand.Rand, cards []engine.Card) string {
+	cs := append([]engine.Card(nil), cards...)
+	sort.Slice(cs, func(i, j int) bool { return engine.CaptainScore(cs[i]) > engine.CaptainScore(cs[j]) })
+	n := 3
+	if len(cs) < n {
+		n = len(cs)
+	}
+	if n == 0 {
+		return ""
+	}
+	return cs[rng.Intn(n)].ID
 }
