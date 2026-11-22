@@ -1,160 +1,82 @@
-import { useEffect, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Save } from 'lucide-react'
 import { api } from '../api/client'
-import { PlayerCard } from '../components/card/PlayerCard'
 import { Button } from '../components/ui/button'
-import { Choice, PageHeader, Panel } from '../components/ui/chrome'
-import { ROLE_LABEL, ROLE_NEED, SQUAD_SLOTS, roleCounts } from '../lib/labels'
-import { defaultBattingOrder, defaultBowlingPlan, validateBowlingPlan, validateSquad } from '../lib/rules'
-import type { PlayerCard as Card, Role } from '../types/engine'
-
-function place(cards: Card[]) {
-  const next = Array(7).fill('')
-  for (const card of cards) {
-    const idx = SQUAD_SLOTS.findIndex((slot, i) => slot.role === card.role && !next[i])
-    if (idx >= 0) next[idx] = card.id
-  }
-  return next
-}
+import { PageHeader } from '../components/ui/chrome'
+import { PlanEditor } from '../components/match/PlanEditor'
+import { compareForm } from '../lib/ratings'
+import { bestTeam, emptyPlan, placeInSlots, planErrors, planFromDefault, samePlan, toRequest, withTeam, type MatchPlan } from '../lib/plan'
+import type { PlayerCard } from '../types/engine'
 
 export function SquadPage() {
-  const cards = useQuery({ queryKey: ['cards'], queryFn: api.cards })
-  const saved = useQuery({ queryKey: ['squad'], queryFn: api.squad })
   const qc = useQueryClient()
-  const [slots, setSlots] = useState<string[]>(Array(7).fill(''))
-  const [ready, setReady] = useState(false)
-  const [filter, setFilter] = useState<Role | ''>('')
+  const cards = useQuery({ queryKey: ['cards'], queryFn: api.cards })
+  const savedQ = useQuery({ queryKey: ['squad'], queryFn: api.squad })
+  const [plan, setPlan] = useState<MatchPlan | null>(null)
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
-  const all = cards.data ?? []
 
-  useEffect(() => {
-    if (ready || !cards.isSuccess || !saved.isSuccess) return
-    const owned = (saved.data?.cardIds ?? []).map((id) => all.find((c) => c.id === String(id))).filter(Boolean) as Card[]
-    if (owned.length) setSlots(place(owned))
-    setReady(true)
-  }, [ready, cards.isSuccess, saved.isSuccess, saved.data, all])
+  const all = useMemo(() => cards.data ?? [], [cards.data])
+  const byId = useMemo(() => Object.fromEntries(all.map((c) => [c.id, c])), [all])
+  const saved = useMemo(() => (cards.isSuccess && savedQ.isSuccess ? planFromDefault(savedQ.data, byId) : null), [cards.isSuccess, savedQ.isSuccess, savedQ.data, byId])
+  const lostCards = savedQ.isSuccess && (savedQ.data?.cardIds?.length ?? 0) > 0 && cards.isSuccess && !saved
 
-  const squad = slots.map((id) => all.find((c) => c.id === id)).filter(Boolean) as Card[]
-  const counts = roleCounts(squad.map((c) => c.role))
-  const filled = squad.length
-  const squadErr = filled === 7 ? validateSquad(squad) : `Add ${7 - filled} more player${7 - filled === 1 ? '' : 's'}`
-  const plan = filled === 7 && !squadErr ? defaultBowlingPlan(squad) : []
-  const bowlErr = plan.length ? validateBowlingPlan(squad, plan) : null
-  const visible = all.filter((c) => !filter || c.role === filter)
+  // Until the user edits, the plan is simply the saved default.
+  const ready = cards.isSuccess && savedQ.isSuccess
+  const current = plan ?? saved ?? emptyPlan()
+  const { squadErr, bowlErr, ok } = planErrors(current, byId)
+  const unsaved = !saved || !samePlan(current, saved)
 
-  function toggle(card: Card) {
+  function fill(by: 'overall' | 'form') {
+    const rank = by === 'form' ? compareForm : (a: PlayerCard, b: PlayerCard) => b.overall - a.overall
+    setPlan(withTeam(current, placeInSlots(bestTeam(all, rank)), byId))
     setMsg('')
-    const at = slots.indexOf(card.id)
-    if (at >= 0) {
-      setSlots((s) => s.map((id, i) => i === at ? '' : id))
-      return
-    }
-    const idx = SQUAD_SLOTS.findIndex((slot, i) => slot.role === card.role && !slots[i])
-    if (idx < 0) return
-    setSlots((s) => s.map((id, i) => i === idx ? card.id : id))
   }
 
-  function autoPick() {
-    const take = (role: Role, n: number) =>
-      all.filter((c) => c.role === role).sort((a, b) => b.overall - a.overall).slice(0, n)
-    setSlots(place([...take('BAT', 3), ...take('WK', 1), ...take('AR', 1), ...take('BOWL', 2)]))
-    setMsg('')
+  async function save() {
+    setBusy(true)
+    setErr('')
+    try {
+      await api.saveSquad(toRequest(current))
+      await qc.invalidateQueries({ queryKey: ['squad'] })
+      setMsg('Saved. Every new match starts from this team and strategy.')
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-28">
       <PageHeader
-        title="Squad"
-        lede="This seven is saved for the next match. Tap a player to fill their role, and tap them again to remove them."
-        action={<Button variant="outline" onClick={autoPick}>Fill best available</Button>}
+        title="Squad & strategy"
+        lede="Your default team and match plan. Every new match starts from it, so before a match you only tweak for the pitch and opponent. It is also used if you run out of time to lock in against another player."
+        action={
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => fill('overall')}>Fill best rated</Button>
+            <Button variant="outline" onClick={() => fill('form')}>Fill in-form XI</Button>
+          </div>
+        }
       />
+      {lostCards && (
+        <p className="rounded-xl border border-wicket/50 bg-wicket/10 px-4 py-3 text-sm">Some players in your saved default are no longer in your collection. Pick replacements and save again.</p>
+      )}
+      {ready ? (
+        <PlanEditor cards={all} plan={current} onChange={(p) => { setPlan(p); setMsg('') }} />
+      ) : (
+        <p className="text-muted">Loading your cards…</p>
+      )}
 
-      <Panel>
-        <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
-          <h2 className="font-display text-2xl font-semibold">Slots · {filled}/7</h2>
-          <ul className="flex flex-wrap gap-2 text-sm">
-            {(Object.keys(ROLE_NEED) as Role[]).map((role) => {
-              const ok = counts[role] === ROLE_NEED[role]
-              return (
-                <li key={role} className={ok ? 'text-success font-medium' : 'text-muted'}>
-                  {ROLE_LABEL[role]} {counts[role]}/{ROLE_NEED[role]}
-                </li>
-              )
-            })}
-          </ul>
+      <div className="fixed bottom-16 md:bottom-0 inset-x-0 md:left-60 z-30 glass border-t border-border">
+        <div className="max-w-6xl mx-auto flex flex-wrap items-center gap-3 px-4 py-3">
+          <Button disabled={!ok || busy || !unsaved} onClick={save}><Save size={16} aria-hidden /> {busy ? 'Saving…' : 'Save as default'}</Button>
+          <p className="text-sm text-muted">{squadErr ?? bowlErr ?? (unsaved ? 'You have unsaved changes.' : 'This is your saved default.')}</p>
+          {msg && <p className="text-sm text-success" role="status">{msg}</p>}
+          {err && <p className="text-sm text-wicket" role="alert">{err}</p>}
         </div>
-        <div className="felt-tray flex flex-wrap gap-3">
-          {SQUAD_SLOTS.map((slot, i) => {
-            const card = all.find((c) => c.id === slots[i])
-            return (
-              <div key={slot.label} className="text-center">
-                <PlayerCard
-                  card={card}
-                  hidden={!card}
-                  size="sm"
-                  placeholder="Empty"
-                  onClick={() => {
-                    if (card) setSlots((s) => s.map((id, n) => n === i ? '' : id))
-                    else setFilter(slot.role)
-                  }}
-                />
-                <div className="text-xs text-white mt-1 w-[5.5rem]">{slot.label}</div>
-              </div>
-            )
-          })}
-        </div>
-      </Panel>
-
-      <div>
-        <h2 className="font-display text-2xl font-semibold mb-2">Your cards</h2>
-        <div className="flex flex-wrap gap-2 mb-4" role="group" aria-label="Filter by role">
-          <Choice pressed={filter === ''} onClick={() => setFilter('')}>All</Choice>
-          {(Object.keys(ROLE_LABEL) as Role[]).map((role) => (
-            <Choice key={role} pressed={filter === role} onClick={() => setFilter(role)}>{ROLE_LABEL[role]}</Choice>
-          ))}
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {visible.map((c) => {
-            const selected = slots.includes(c.id)
-            const full = counts[c.role] >= ROLE_NEED[c.role] && !selected
-            return (
-              <PlayerCard
-                key={c.id}
-                card={c}
-                className="w-full max-w-none"
-                selected={selected}
-                disabled={full}
-                status={selected ? 'Tap to remove' : full ? 'Role full' : undefined}
-                onClick={() => toggle(c)}
-              />
-            )
-          })}
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <Button
-          disabled={!!squadErr || !!bowlErr || busy}
-          onClick={async () => {
-            setBusy(true)
-            setErr('')
-            try {
-              await api.saveSquad({ cardIds: slots, battingOrder: defaultBattingOrder(squad), bowlingPlan: plan })
-              setMsg('Squad saved. New matches start from this seven.')
-              qc.invalidateQueries({ queryKey: ['squad'] })
-            } catch (e) {
-              setErr((e as Error).message)
-            } finally {
-              setBusy(false)
-            }
-          }}
-        >{busy ? 'Saving…' : 'Save squad'}</Button>
-        {squadErr && <p className="text-muted">{squadErr}</p>}
-        {bowlErr && <p className="text-wicket">{bowlErr}</p>}
-        {msg && <p className="text-success" role="status">{msg}</p>}
-        {err && <p className="text-wicket" role="alert">{err}</p>}
       </div>
     </div>
   )

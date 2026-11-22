@@ -1,12 +1,15 @@
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { PlayerCard } from '../components/card/PlayerCard'
 import { Button } from '../components/ui/button'
 import { Panel } from '../components/ui/chrome'
 import { useState } from 'react'
-import { Award, Flame, Target, Trophy } from 'lucide-react'
+import { Award, Brain, Crown, Flame, Sparkles, Target, Trophy } from 'lucide-react'
 import { cn } from '../lib/cn'
+import { ratingBand } from '../lib/ratings'
+import { RatingBadge } from '../components/card/RatingBadge'
+import { PlayerAvatar } from '../components/card/PlayerAvatar'
 import type { PlayerCard as Card } from '../types/engine'
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
@@ -19,6 +22,7 @@ export function ResultPage() {
   const [busy, setBusy] = useState(false)
   const m = match.data
   const res = m?.result
+  const model = useQuery({ queryKey: ['engine-model'], queryFn: api.engineModel, staleTime: Infinity })
   if (!m || !res) return <p className="text-muted">Loading the scorecard…</p>
   const youWon = m.winnerUserId === me.data?.user.id || (m.isBot && res.winner === (m.youAreHome ? 'home' : 'away'))
   const tie = res.winner === 'tie'
@@ -47,6 +51,53 @@ export function ResultPage() {
     acc.push(next)
     return acc
   }, [])
+
+  const ex = res.extras
+  const myLineup = m.youAreHome ? m.homeLineup : m.awayLineup
+  const captain = cards.find((c) => c.id === myLineup?.captainId)
+  const myCall = res.breakCalls?.[yourSide]
+  const callDef = model.data?.breakCalls.find((c) => c.code === myCall)
+  const strokesUsed = res.innings.flatMap((inn) => (inn.calls ?? []).filter((c) => c.masterstroke && ((c.masterstrokeBy === 'bat' && inn.battingSide === yourSide) || (c.masterstrokeBy === 'bowl' && inn.bowlingSide === yourSide))).map((c) => ({ ...c, innings: inn })))
+  const theirStrokes = res.innings.flatMap((inn) => (inn.calls ?? []).filter((c) => c.masterstroke && !((c.masterstrokeBy === 'bat' && inn.battingSide === yourSide) || (c.masterstrokeBy === 'bowl' && inn.bowlingSide === yourSide))))
+  const cond = model.data?.conditions.find((c) => c.code === res.conditions)
+  const streakBonus = ex?.streakBonus?.[yourSide] ?? 0
+
+  function captaincyReport() {
+    return (
+      <section className="grid md:grid-cols-2 gap-3">
+        <Panel>
+          <h2 className="font-display text-2xl font-bold uppercase flex items-center gap-2"><Crown size={20} className="text-cta" aria-hidden /> Captain’s report</h2>
+          {captain && <p className="text-muted">{captain.name} led {sideName(yourSide)}.</p>}
+          <ul className="mt-3 space-y-2 text-sm">
+            <li className="flex gap-2"><Brain size={16} className="text-success shrink-0 mt-0.5" aria-hidden /><span><b>{ex?.reads?.[yourSide] ?? 0} good reads</b> <span className="text-muted">(overs where your captain’s call beat theirs; they managed {ex?.reads?.[yourSide === 'home' ? 'away' : 'home'] ?? 0})</span></span></li>
+            {callDef && <li className="flex gap-2"><Target size={16} className="text-cta shrink-0 mt-0.5" aria-hidden /><span>Break call: <b>{callDef.name}</b> <span className="text-muted">{callDef.description}</span></span></li>}
+            {strokesUsed.map((c, i) => (
+              <li key={i} className="flex gap-2"><Sparkles size={16} className="text-cta shrink-0 mt-0.5" aria-hidden /><span>Masterstroke <b>{c.masterstroke}</b> in over {c.over + 1} of the {c.innings.battingSide === yourSide ? 'innings you batted' : 'innings you bowled'}.</span></li>
+            ))}
+            {strokesUsed.length === 0 && <li className="flex gap-2 text-muted"><Sparkles size={16} className="shrink-0 mt-0.5" aria-hidden />Your captain kept the masterstroke in reserve.</li>}
+            {theirStrokes.length > 0 && <li className="flex gap-2 text-muted"><Sparkles size={16} className="shrink-0 mt-0.5" aria-hidden />They played {theirStrokes.map((c) => c.masterstroke).join(', ')}.</li>}
+            {cond && <li className="flex gap-2 text-muted"><Flame size={16} className="shrink-0 mt-0.5" aria-hidden />Second-innings twist: {cond.name}.</li>}
+          </ul>
+          {(ex?.repGained?.[yourSide] ?? 0) > 0 && captain && (
+            <p className="mt-3 rounded-xl bg-cta/10 border border-cta/40 px-3 py-2 text-sm"><b>+{ex?.repGained?.[yourSide]} reputation</b> for {captain.name} as captain. Every 10 points adds +1 to their Tactics.</p>
+          )}
+        </Panel>
+        <Panel>
+          <h2 className="font-display text-2xl font-bold uppercase flex items-center gap-2"><Flame size={20} className="text-cta" aria-hidden /> Streak</h2>
+          {youWon && ex?.streak?.[yourSide] ? (
+            <>
+              <p className="font-display text-5xl font-bold tabular mt-1">{ex.streak[yourSide]}<span className="text-xl text-muted ml-2">win{ex.streak[yourSide] === 1 ? '' : 's'} in a row</span></p>
+              {streakBonus > 0 && <p className="mt-1 text-success font-semibold">+{streakBonus} bonus trophies included above.</p>}
+              {ex.boosted?.[yourSide] && <p className="text-sm mt-1">Streak reward: one of your new cards was rolled with the next arena’s odds.</p>}
+              <p className="text-sm text-muted mt-2">Win the next one for +{model.data?.streak.bonus[String(Math.min(5, ex.streak[yourSide] + 1))] ?? 0} bonus trophies.</p>
+            </>
+          ) : (
+            <p className="text-muted mt-1">{tie ? 'A tie keeps nothing going.' : 'Streak reset.'} Win 2 in a row for bonus trophies; 3 in a row also boosts your reward cards.</p>
+          )}
+        </Panel>
+      </section>
+    )
+  }
 
   async function again() {
     setBusy(true)
@@ -88,11 +139,60 @@ export function ResultPage() {
         </div>
       </section>
 
+      {captaincyReport()}
+
+      {res.superOver && (
+        <Panel className="border-six/60">
+          <h2 className="font-display text-2xl font-bold uppercase text-six">Super Over</h2>
+          <div className="grid grid-cols-2 gap-3 mt-2">
+            {res.superOver.innings.map((inn, i) => (
+              <div key={i}>
+                <p className="text-sm text-muted">{sideName(inn.battingSide)}</p>
+                <p className="font-display text-3xl font-bold tabular">{inn.runs}/{inn.wickets}</p>
+                <p className="text-xs text-muted">{inn.batters.filter((b) => b.balls > 0).map((b) => `${name(b.cardId)} ${b.runs} (${b.balls})`).join(', ')}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-sm mt-2">{res.superOver.winner === 'tie' ? 'Still tied after the Super Over.' : `${sideName(res.superOver.winner)} won on ${res.superOver.decider}.`}</p>
+        </Panel>
+      )}
+
       <section className="grid sm:grid-cols-3 gap-3">
         {potm && <Performer label="Player of the match" Icon={Award} card={potm} line={potmLine} highlight />}
         {topBat && <Performer label="Top scorer" Icon={Flame} card={cardOf(topBat.cardId)} line={`${topBat.runs} (${topBat.balls}) · ${topBat.fours}×4 ${topBat.sixes}×6`} />}
         {topBowl && <Performer label="Best bowling" Icon={Target} card={cardOf(topBowl.cardId)} line={`${topBowl.wickets}/${topBowl.runs} (${Math.floor(topBowl.balls / 6)}.${topBowl.balls % 6})`} />}
       </section>
+
+      {m.ratings && (
+        <section>
+          <h2 className="font-display text-3xl font-bold uppercase mb-1">Player ratings</h2>
+          <p className="text-muted mb-3">Every player is rated from 3.0 to 10.0 on this match. Your cards also earned XP: a little for playing, more for a strong rating{m.xpEarned && !youWon ? ', plus the consolation XP for a loss or tie' : ''}. <Link to="/engine#ratings" className="underline">How ratings work</Link></p>
+          <div className="grid md:grid-cols-2 gap-4">
+            {([['home', m.homeLineup?.cards ?? []], ['away', m.awayLineup?.cards ?? []]] as const).map(([side, teamCards]) => {
+              const mine = (side === 'home') === m.youAreHome
+              const rows = teamCards.map((c) => ({ c, r: m.ratings?.[c.id] ?? 0 })).sort((a, b) => b.r - a.r)
+              return (
+                <Panel key={side}>
+                  <h3 className="font-display text-xl font-bold uppercase mb-2">{sideName(side)}{mine && <span className="ml-2 rounded bg-cta px-1.5 text-[11px] font-bold text-cta-fg align-middle">YOU</span>}</h3>
+                  <ol className="divide-y divide-border">
+                    {rows.map(({ c, r }) => (
+                      <li key={c.id} className="flex items-center gap-3 py-2">
+                        <PlayerAvatar name={c.name} rarity={c.rarity} />
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold truncate">{c.name}{c.id === res.playerOfMatch && <Award size={14} className="inline ml-1 text-cta" aria-label="player of the match" />}</p>
+                          <p className="text-xs text-muted">{ratingBand(r).label}</p>
+                        </div>
+                        {mine && m.xpEarned?.[c.id] != null && <span className="text-sm font-bold text-success tabular">+{m.xpEarned[c.id]} XP</span>}
+                        <RatingBadge value={r} className="text-lg px-2 py-1 min-w-12" />
+                      </li>
+                    ))}
+                  </ol>
+                </Panel>
+              )
+            })}
+          </div>
+        </section>
+      )}
 
       {m.rewards && m.rewards.length > 0 && (
         <section>

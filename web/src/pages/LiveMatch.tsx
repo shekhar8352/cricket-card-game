@@ -1,7 +1,9 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { FastForward, Flame, Gauge, SkipForward, Sparkles, Swords, Target, TrendingDown, TrendingUp, Zap } from 'lucide-react'
+import { Brain, FastForward, Flame, Gauge, Link2, ShieldAlert, SkipForward, Sparkles, Swords, Target, TrendingDown, TrendingUp, Zap } from 'lucide-react'
+import { BreakPanel, ConditionsCard, SuperOverPanel } from '../components/match/PausePanels'
+import { bestApproachVs, bestFieldVs } from '../lib/captaincy'
 import { api } from '../api/client'
 import { useMatchPlayback } from '../components/match/useMatchPlayback'
 import { FieldSvg } from '../components/match/FieldSvg'
@@ -18,9 +20,11 @@ import {
 
 type Moment = { key: string; text: string; cls: string }
 
-function momentFor(b?: BallEvent): Moment | null {
+function momentFor(b?: BallEvent, prev?: BallEvent): Moment | null {
   if (!b) return null
   const key = `${b.innings}-${b.seq}`
+  const newOver = !prev || prev.over !== b.over || prev.innings !== b.innings
+  if (b.masterstroke && newOver) return { key: key + 'm', text: 'MASTERSTROKE', cls: 'moment-drop' }
   if (b.outcome === 'six') return { key, text: 'SIX!', cls: 'moment-six' }
   if (b.outcome === 'four') return { key, text: 'FOUR!', cls: 'moment-four' }
   if (b.outcome === 'wicket') return { key, text: 'WICKET!', cls: 'moment-wicket' }
@@ -40,8 +44,9 @@ export function LiveMatchPage() {
   const nav = useNavigate()
   const match = useQuery({ queryKey: ['match', id], queryFn: () => api.match(id!), refetchInterval: (q) => (q.state.data?.status === 'COMPLETE' ? false : 4000) })
   const me = useQuery({ queryKey: ['me'], queryFn: api.me })
+  const model = useQuery({ queryKey: ['engine-model'], queryFn: api.engineModel, staleTime: Infinity })
   const m = match.data
-  const balls = m?.ballLog ?? m?.result?.balls ?? []
+  const balls = (m?.ballLog?.length ?? 0) >= (m?.result?.balls?.length ?? 0) ? m?.ballLog ?? [] : m?.result?.balls ?? []
   const { shown, current, inningsBreak, done, skipToEnd } = useMatchPlayback(id!, balls, m?.status === 'COMPLETE')
   const { speed, setSpeed } = useUI()
 
@@ -61,7 +66,12 @@ export function LiveMatchPage() {
   const fullName = (cid: string) => cards.get(cid)?.name ?? 'Player'
 
   const par = m?.pitch?.par
-  const state = useMemo(() => computeLive(shown, par), [shown, par])
+  // Super Over balls are innings 2 and 3; the main match is innings 0 and 1.
+  const mainShown = useMemo(() => shown.filter((b) => b.innings < 2), [shown])
+  const soShown = useMemo(() => shown.filter((b) => b.innings >= 2).map((b) => ({ ...b, innings: b.innings - 2 })), [shown])
+  const state = useMemo(() => computeLive(mainShown, par), [mainShown, par])
+  const soState = useMemo(() => (soShown.length ? computeLive(soShown) : null), [soShown])
+  const inSuperOver = (current?.innings ?? 0) >= 2
 
   // Who is batting in which innings.
   const yourSide = m?.youAreHome ? 'home' : 'away'
@@ -80,23 +90,29 @@ export function LiveMatchPage() {
   const inn = state.second ? 1 : 0
   const battingSide = inn === 0 ? firstBatSide : secondBatSide
   const bowlingSide = inn === 0 ? secondBatSide : firstBatSide
-  const sit = situation(state, shown, name, team(battingSide), team(bowlingSide))
+  const sit = situation(state, mainShown, name, team(battingSide), team(bowlingSide))
 
   const youWinProb = battingSide === yourSide ? state.battingWinProb : 1 - state.battingWinProb
 
   // Big-moment overlay that clears itself.
   const [moment, setMoment] = useState<Moment | null>(null)
   const lastKey = useRef<string>('')
+  const prevBall = shown.length > 1 ? shown[shown.length - 2] : undefined
   useEffect(() => {
-    const mo = momentFor(current)
+    const mo = momentFor(current, prevBall)
     if (!mo || mo.key === lastKey.current) return
     lastKey.current = mo.key
     setMoment(mo)
     const t = setTimeout(() => setMoment(null), 1300)
     return () => clearTimeout(t)
-  }, [current])
+  }, [current, prevBall])
 
   if (!m) return <p className="text-muted">Walking out to the middle…</p>
+
+  const myLineup = m.youAreHome ? m.homeLineup : m.awayLineup
+  const paused = done && m.pause && (m.status === 'INNINGS_BREAK' || m.status === 'SUPER_OVER')
+  // Conditions are revealed at the break: from the pause while paused, from the result after.
+  const condDef = m.pause?.conditions ?? model.data?.conditions.find((c) => c.code === m.result?.conditions && c.code !== 'clear')
 
   const overBalls = current ? shown.filter((b) => b.innings === current.innings && b.over === current.over) : []
   const dotStreak = (() => {
@@ -110,9 +126,10 @@ export function LiveMatchPage() {
     return n
   })()
   const legalInOver = overBalls.filter((b) => b.legal).length
-  const striker = current ? state.now.batters.get(current.strikerId) : undefined
-  const nonStriker = current?.nonStrikerId ? state.now.batters.get(current.nonStrikerId) : undefined
-  const bowler = current ? state.now.bowlers.get(current.bowlerId) : undefined
+  const live = inSuperOver && soState ? soState : state
+  const striker = current ? live.now.batters.get(current.strikerId) : undefined
+  const nonStriker = current?.nonStrikerId ? live.now.batters.get(current.nonStrikerId) : undefined
+  const bowler = current ? live.now.bowlers.get(current.bowlerId) : undefined
 
   return (
     <div className="space-y-4">
@@ -120,9 +137,10 @@ export function LiveMatchPage() {
       <section className="scorebug rounded-2xl overflow-hidden" aria-label="Scoreboard">
         <div className="flex items-center justify-between gap-3 px-4 pt-3 text-xs font-semibold uppercase tracking-[0.16em] text-white/60">
           <span className="flex items-center gap-2">
-            {done ? <span>Full time</span> : <><span className="live-dot" aria-hidden /> Live</>}
+            {done && m.status === 'COMPLETE' ? <span>Full time</span> : paused ? <span>{m.status === 'SUPER_OVER' ? 'Tied' : 'Innings break'}</span> : <><span className="live-dot" aria-hidden /> Live</>}
             <span className="text-white/30">·</span>
-            {inn === 0 ? '1st innings' : 'Chase'}
+            {inSuperOver ? 'Super Over' : inn === 0 ? '1st innings' : 'Chase'}
+            {current?.powerplay && <span className="ml-1 rounded bg-cta px-1.5 py-0.5 text-[10px] font-bold text-cta-fg tracking-wide">POWERPLAY · 2 OUT</span>}
           </span>
           <span>{m?.pitch ? `${m.pitch.name} pitch · par ${m.pitch.par}` : `${OVERS} overs · ${MAX_WICKETS} wickets`}</span>
         </div>
@@ -142,7 +160,7 @@ export function LiveMatchPage() {
             active={inn === 1}
             started={!!state.second}
             align="right"
-            pending={inningsBreak ? `Target ${state.first.runs + 1}` : 'Yet to bat'}
+            pending={inningsBreak || paused ? `Target ${state.first.runs + 1}` : 'Yet to bat'}
           />
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 border-t border-white/10 text-center">
@@ -175,6 +193,21 @@ export function LiveMatchPage() {
         </div>
       </section>
 
+      {soState && (
+        <section className="rounded-2xl border-2 border-six/60 bg-six/10 px-4 py-3" aria-label="Super Over">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-six">Super Over</p>
+          <div className="flex flex-wrap gap-6 mt-1 font-display font-bold tabular">
+            <span className="text-2xl">{team(secondBatSide)} {soState.first.runs}/{soState.first.wickets} <span className="text-base text-muted">({oversText(soState.first.legalBalls)})</span></span>
+            {soState.second && <span className="text-2xl">{team(firstBatSide)} {soState.second.runs}/{soState.second.wickets} <span className="text-base text-muted">({oversText(soState.second.legalBalls)})</span></span>}
+            {soState.second && soState.needed != null && soState.needed > 0 && <span className="text-lg text-cta self-center">Need {soState.needed} off {soState.ballsLeft - 24}</span>}
+          </div>
+        </section>
+      )}
+
+      {paused && m.pause?.kind === 'break' && <BreakPanel m={m} pause={m.pause} mine={myLineup} teamName={team(yourSide)} />}
+      {paused && m.pause?.kind === 'super_over' && <SuperOverPanel m={m} pause={m.pause} mine={myLineup} />}
+      {!paused && condDef && state.second && <ConditionsCard c={condDef} />}
+
       {/* Situation */}
       <SituationBanner sit={inningsBreak ? {
         tone: 'hot',
@@ -189,7 +222,7 @@ export function LiveMatchPage() {
               <h2 className="font-display text-xl font-bold uppercase tracking-wide">
                 Over {current ? current.over + 1 : 1}
                 <span className="text-muted font-sans text-sm normal-case tracking-normal ml-2">
-                  {current ? `${name(current.bowlerId)} bowling · ${oversText(state.now.legalBalls)} overs` : 'Waiting for the first ball'}
+                  {current ? `${name(current.bowlerId)} bowling · ${oversText(live.now.legalBalls)} overs` : 'Waiting for the first ball'}
                 </span>
               </h2>
               <div className="flex gap-1.5" role="group" aria-label="Playback">
@@ -209,6 +242,22 @@ export function LiveMatchPage() {
                     <Swords size={12} aria-hidden /> {current.counter}
                   </span>
                 )}
+                {current.approach && current.field && current.approach === bestApproachVs(current.field) && (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-success/15 px-2 py-0.5 text-xs font-bold text-success" title="The batting captain's call was the best reply to the field">
+                    <Brain size={12} aria-hidden /> {team(battingSide)} captain read it
+                  </span>
+                )}
+                {current.approach && current.field && current.field === bestFieldVs(current.approach) && (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-success/15 px-2 py-0.5 text-xs font-bold text-success" title="The fielding captain's field was the best reply to the batting approach">
+                    <Brain size={12} aria-hidden /> {team(bowlingSide)} captain read it
+                  </span>
+                )}
+                {current.masterstroke && (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-cta px-2 py-0.5 text-xs font-bold text-cta-fg">
+                    <Sparkles size={12} aria-hidden /> {current.masterstroke}
+                  </span>
+                )}
+                {current.freeHit && <span className="rounded-md bg-six px-2 py-0.5 text-xs font-bold text-white">FREE HIT</span>}
                 <PressureMeter dots={dotStreak} />
               </div>
             )}
@@ -222,7 +271,7 @@ export function LiveMatchPage() {
               ))}
             </div>
             <div className="relative">
-              <FieldSvg event={current} />
+              <FieldSvg event={current} powerplay={current?.powerplay} />
               {moment && (
                 <div className="moment" key={moment.key} aria-hidden>
                   <span className={cn('moment-text', moment.cls)}>{moment.text}</span>
@@ -249,7 +298,17 @@ export function LiveMatchPage() {
             {!current && <p className="text-muted">Openers are padding up.</p>}
             {striker && <BatterRow line={striker} card={cards.get(striker.id)} onStrike matchup={current?.strikerId === striker.id ? current?.matchup : undefined} />}
             {nonStriker && !nonStriker.out && <BatterRow line={nonStriker} card={cards.get(nonStriker.id)} />}
+            {current && current.chemistry != null && current.chemistry > 0 && nonStriker && !nonStriker.out && (
+              <p className={cn('flex items-center gap-1.5 text-xs font-semibold pb-1', current.chemistry >= 2 ? 'text-success' : 'text-muted')}>
+                <Link2 size={12} aria-hidden /> Chemistry {current.chemistry}/3: {current.chemistry >= 2 ? 'known partners, running hard' : 'compatriots, quick singles'}
+              </p>
+            )}
             {bowler && <BowlerRow line={bowler} card={cards.get(bowler.id)} />}
+            {current?.rivalry && (
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-cta">
+                <ShieldAlert size={12} aria-hidden /> {fullName(current.bowlerId)} has {fullName(current.strikerId)}’s number
+              </p>
+            )}
             {state.now.lastWicket && (
               <p className="text-sm text-muted mt-3 pt-3 border-t border-border">
                 <span className="font-semibold text-wicket">Last wicket:</span> {fullName(state.now.lastWicket.batterId)} {state.now.lastWicket.runs} ({state.now.lastWicket.balls}) · {state.now.lastWicket.text} · {state.now.lastWicket.score}
