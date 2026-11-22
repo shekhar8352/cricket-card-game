@@ -6,7 +6,9 @@ import { useUI } from '../../store/ui'
 export function useMatchPlayback(matchId: string, log: BallEvent[] | undefined, complete: boolean) {
   const speed = useUI((s) => s.speed)
   const [idx, setIdx] = useState(0)
-  const [skip, setSkip] = useState(false)
+  // Skip jumps to the balls known when it was pressed; balls that arrive later
+  // (after the innings break or Super Over picks) play normally.
+  const [skipTo, setSkipTo] = useState(0)
   const [wsLog, setWsLog] = useState<BallEvent[] | null>(null)
 
   useEffect(() => {
@@ -22,7 +24,8 @@ export function useMatchPlayback(matchId: string, log: BallEvent[] | undefined, 
     return () => ws.close()
   }, [matchId, complete])
 
-  const balls = wsLog ?? log ?? []
+  // Matches pause at the innings break and Super Over, so the log grows: use whichever copy is longer.
+  const balls = (wsLog?.length ?? 0) >= (log?.length ?? 0) ? wsLog ?? [] : log ?? []
   const base = speed === 2 ? 750 : 1500
   const last = idx > 0 ? balls[idx - 1] : undefined
   const next = balls[idx]
@@ -33,14 +36,14 @@ export function useMatchPlayback(matchId: string, log: BallEvent[] | undefined, 
   else if (last && (last.outcome === 'four' || (last.chance && !last.chance.converted))) delay = base * 1.4
 
   useEffect(() => {
-    if (skip) {
-      setIdx(balls.length)
+    if (idx < skipTo) {
+      setIdx(Math.min(skipTo, balls.length))
       return
     }
     if (idx >= balls.length) return
     const t = setTimeout(() => setIdx((i) => i + 1), delay)
     return () => clearTimeout(t)
-  }, [idx, balls.length, delay, skip])
+  }, [idx, balls.length, delay, skipTo])
 
   const shown = useMemo(() => balls.slice(0, idx), [balls, idx])
   const current = shown[shown.length - 1]
@@ -51,6 +54,6 @@ export function useMatchPlayback(matchId: string, log: BallEvent[] | undefined, 
     total: balls.length,
     inningsBreak: !!(last && next && last.innings !== next.innings),
     done: idx >= balls.length && balls.length > 0,
-    skipToEnd: () => setSkip(true),
+    skipToEnd: () => setSkipTo(balls.length),
   }
 }
