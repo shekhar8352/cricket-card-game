@@ -18,7 +18,7 @@ const groups = [
   {
     label: 'Your cards',
     links: [
-      { to: '/squad', label: 'Squad', icon: Users },
+      { to: '/squad', label: 'Squad & strategy', icon: Users },
       { to: '/collection', label: 'Collection', icon: Layers },
       { to: '/training', label: 'Training', icon: Dumbbell },
     ],

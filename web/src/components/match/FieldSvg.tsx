@@ -35,7 +35,10 @@ function caption(event?: BallEvent) {
   return `${event.runs} run${event.runs === 1 ? '' : 's'} to ${zone}`
 }
 
-export function FieldSvg({ event }: { event?: BallEvent }) {
+// During the powerplay only these two zones have a fielder on the boundary.
+const POWERPLAY_OUT = new Set(['long_on', 'third_man'])
+
+export function FieldSvg({ event, powerplay }: { event?: BallEvent; powerplay?: boolean }) {
   const four = event?.outcome === 'four'
   const six = event?.outcome === 'six'
   const wicket = event?.outcome === 'wicket'
@@ -77,12 +80,19 @@ export function FieldSvg({ event }: { event?: BallEvent }) {
       <rect x="93" y="70" width="14" height="44" rx="2" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.6" />
       <line x1="92" y1="76" x2="108" y2="76" stroke="#fff" strokeWidth="0.8" />
       <line x1="92" y1="108" x2="108" y2="108" stroke="#fff" strokeWidth="0.8" />
-      {Object.entries(zones).filter(([k]) => !['pitch', 'keeper'].includes(k)).map(([k, p]) => (
+      {Object.entries(zones).filter(([k]) => !['pitch', 'keeper'].includes(k)).map(([k, p]) => {
+        // Powerplay: fielders not allowed out are drawn inside the ring.
+        const inRing = powerplay && !POWERPLAY_OUT.has(k)
+        const fx = inRing ? 100 + (p.x - 100) * 0.55 : p.x
+        const fy = inRing ? 100 + (p.y - 100) * 0.55 : p.y
+        return (
         <g key={k}>
-          <circle cx={p.x} cy={p.y} r={zoneKey === k ? 4.5 : 3} fill={zoneKey === k ? color : '#eaffef'} opacity={zoneKey === k ? 1 : 0.85} />
+          <circle cx={fx} cy={fy} r={zoneKey === k ? 4.5 : 3} fill={zoneKey === k ? color : inRing ? '#ffd166' : '#eaffef'} opacity={zoneKey === k ? 1 : 0.9} />
           <text x={p.x} y={p.y + 10} textAnchor="middle" fontSize="6" fill="rgba(255,255,255,0.55)">{p.label}</text>
         </g>
-      ))}
+        )
+      })}
+      {powerplay && <text x="100" y="196" textAnchor="middle" fontSize="7" fontWeight="700" fill="#ffd166">POWERPLAY: 2 FIELDERS OUT</text>}
       <circle cx="100" cy="62" r="3" fill="#eaffef" />
       {event && (
         <g key={event.seq + '-' + event.innings}>

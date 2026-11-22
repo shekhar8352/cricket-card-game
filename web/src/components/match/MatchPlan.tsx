@@ -1,9 +1,11 @@
 import { Link } from 'react-router-dom'
-import { CloudSun, Eye, Info, Leaf, Mountain, Sun, Target } from 'lucide-react'
+import { CloudSun, Eye, Info, Leaf, Mountain, Sun, Swords, Target } from 'lucide-react'
 import { cn } from '../../lib/cn'
 import { APPROACH, FIELD, attackMix, scoutBatters } from '../../lib/strategy'
 import { PlayerAvatar } from '../card/PlayerAvatar'
-import type { Approach, BotStyle, FieldPlan, PitchDef, PlayerCard, Tactics } from '../../types/engine'
+import type { Approach, FieldPlan, OpponentCaptain, PitchDef, PlayerCard, Rivalry } from '../../types/engine'
+import { CaptainProfile } from '../card/CaptainProfile'
+import { captainTendency } from '../../lib/captaincy'
 
 const PITCH_ICON = { balanced: CloudSun, green: Leaf, dusty: Mountain, flat: Sun } as const
 
@@ -76,28 +78,18 @@ export function PitchCard({ pitch, compact }: { pitch: PitchDef; compact?: boole
   )
 }
 
-function StylePlan({ tactics }: { tactics: Tactics }) {
-  return (
-    <div className="grid gap-2 mt-3 text-sm">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="w-14 text-muted">Batting</span>
-        {tactics.batApproach.map((a, i) => (
-          <span key={i} className="inline-flex items-center gap-1"><span className="text-xs text-muted">{['PP', 'Mid', 'Death'][i]}</span><PlanBadge kind="bat" value={a} /></span>
-        ))}
-      </div>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="w-14 text-muted">Field</span>
-        {tactics.fieldPlan.map((f, i) => (
-          <span key={i} className="inline-flex items-center gap-1"><span className="text-xs text-muted">Ov{i + 1}</span><PlanBadge kind="field" value={f} /></span>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 /** Pitch + opposition scouting shown before a lineup is locked. */
-export function ScoutingPanel({ pitch, style, oppCards }: { pitch?: PitchDef; style?: BotStyle | null; oppCards: PlayerCard[] }) {
+export function ScoutingPanel({ pitch, captain, oppCards, myCards = [], rivalries = [] }: {
+  pitch?: PitchDef
+  captain?: OpponentCaptain | null
+  oppCards: PlayerCard[]
+  myCards?: PlayerCard[]
+  rivalries?: Rivalry[] | null
+}) {
   const scout = scoutBatters(oppCards)
+  const names = Object.fromEntries([...myCards, ...oppCards].map((c) => [c.playerId, c.name]))
+  const mine = new Set(myCards.map((c) => c.playerId))
+  const rivals = (rivalries ?? []).filter((r) => names[r.bowler] && names[r.batter]).slice(0, 4)
   const mix = attackMix(oppCards)
   const flagged = scout.filter((s) => s.notes.length > 0)
   return (
@@ -111,14 +103,28 @@ export function ScoutingPanel({ pitch, style, oppCards }: { pitch?: PitchDef; st
       </div>
       <div className="glass rounded-2xl border border-border p-4 sm:p-5">
         <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted"><Eye size={14} aria-hidden /> Scouting report</p>
-        {style ? (
+        {captain ? (
           <div className="mt-2">
-            <p className="font-display text-2xl font-bold leading-tight">Captain style: <span className="text-cta">{style.name}</span></p>
-            <p className="text-sm text-muted">{style.description}</p>
-            <StylePlan tactics={style.tactics} />
+            <p className="text-xs font-bold uppercase tracking-wider text-muted">Their captain</p>
+            <CaptainProfile name={captain.name} cp={captain.captaincy} rep={captain.captainRep} def={captain.masterstroke} />
+            <p className="text-sm mt-2"><span className="font-semibold">Scouting:</span> <span className="text-muted">{captainTendency(captain.captaincy)}</span></p>
           </div>
         ) : (
-          <p className="text-sm text-muted mt-2">A real opponent’s plan stays secret until the match starts. Balanced plans are the safe bet.</p>
+          <p className="text-sm text-muted mt-2">Their captain is revealed when they lock in.</p>
+        )}
+        {rivals.length > 0 && (
+          <div className="mt-4 pt-3 border-t border-border">
+            <p className="text-sm font-semibold flex items-center gap-1.5"><Swords size={14} aria-hidden /> Rivalries</p>
+            <ul className="mt-1 space-y-1 text-sm">
+              {rivals.map((r) => (
+                <li key={r.bowler + r.batter}>
+                  <span className={mine.has(r.bowler) ? 'text-success font-semibold' : 'text-wicket font-semibold'}>{names[r.bowler]}</span> vs {names[r.batter]}:{' '}
+                  <span className="text-muted tabular">{r.dismissals} wicket{r.dismissals === 1 ? '' : 's'}, {r.runs} runs off {r.balls} balls</span>
+                  {r.dismissals >= 3 && <span className="ml-1.5 rounded bg-cta/15 text-cta px-1 text-[11px] font-bold">has his number</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
         {oppCards.length > 0 && (
           <div className="mt-4 pt-3 border-t border-border">
