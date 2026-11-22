@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { Button } from '../components/ui/button'
 import { EmptyState, PageHeader } from '../components/ui/chrome'
-import { statusLabel } from '../lib/labels'
+import { matchPath, statusLabel } from '../lib/labels'
 
 export function HistoryPage() {
   const q = useQuery({ queryKey: ['matches'], queryFn: api.matches })
@@ -31,7 +31,7 @@ export function HistoryPage() {
               <button
                 key={m.id}
                 type="button"
-                onClick={() => nav(m.status === 'COMPLETE' ? `/match/${m.id}/result` : m.status === 'SIMULATING' ? `/match/${m.id}/live` : `/match/${m.id}/lineup`)}
+                onClick={() => nav(matchPath(m))}
                 className="w-full text-left bg-card border border-border rounded-xl px-4 py-3 min-h-11 cursor-pointer hover:bg-black/5 dark:hover:bg-white/10 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
                 <div className="flex justify-between gap-3">

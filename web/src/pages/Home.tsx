@@ -4,7 +4,7 @@ import { api } from '../api/client'
 import { Button } from '../components/ui/button'
 import { EmptyState, Panel, ProgressBar } from '../components/ui/chrome'
 import { PlayerCard } from '../components/card/PlayerCard'
-import { statusLabel } from '../lib/labels'
+import { matchPath, statusLabel } from '../lib/labels'
 import { useUI } from '../store/ui'
 import { useState } from 'react'
 import { Flame, ListOrdered, Play, Swords, Trophy, Users } from 'lucide-react'
@@ -28,6 +28,8 @@ export function HomePage() {
   const done = (hist.data ?? []).filter((m) => m.status === 'COMPLETE')
   const played = done.length
   const wins = done.filter((m) => m.winnerUserId === user?.id).length
+  const streak = me.data?.streak
+  const paused = (hist.data ?? []).filter((m) => m.status === 'INNINGS_BREAK' || m.status === 'SUPER_OVER')
   const toNext = user?.nextArenaMin != null ? Math.max(0, user.nextArenaMin - user.trophies) : null
 
   async function start(mode: 'bot' | 'pvp') {
@@ -112,11 +114,31 @@ export function HomePage() {
         </div>
       </section>
 
+      {paused.length > 0 && (
+        <button type="button" onClick={() => nav(matchPath(paused[0]))} className="w-full text-left rounded-2xl border-2 border-cta/60 bg-cta/10 px-4 py-3 cursor-pointer game-tile">
+          <p className="font-display text-xl font-bold">Your match vs {paused[0].opponent.name} is waiting for your call</p>
+          <p className="text-sm text-muted">{statusLabel(paused[0].status)}. Tap to continue.</p>
+        </button>
+      )}
+
+      {streak && streak.current > 0 && (
+        <section className="flex flex-wrap items-center gap-4 rounded-2xl border border-cta/50 bg-gradient-to-r from-cta/15 to-transparent px-4 py-3">
+          <Flame size={32} className="text-cta" aria-hidden />
+          <div className="flex-1 min-w-[12rem]">
+            <p className="font-display text-2xl font-bold">{streak.current}-win streak</p>
+            <p className="text-sm text-muted">
+              Next win: <b className="text-fg">+{streak.nextWinBonus} bonus trophies</b>{streak.nextWinBoosted ? ' and a boosted reward card' : ''}.
+            </p>
+          </div>
+          <Button onClick={() => start('bot')} disabled={!!busy}>Keep it going</Button>
+        </section>
+      )}
+
       <section className="grid sm:grid-cols-3 gap-3">
         {[
           { Icon: Users, title: 'Pick your XI', body: '3 batters, a keeper, an all-rounder and 2 bowlers.' },
-          { Icon: ListOrdered, title: 'Set the plan', body: 'Choose the batting order and who bowls each over.' },
-          { Icon: Flame, title: 'Watch it unfold', body: 'Live ball-by-ball action. Win cards and trophies.' },
+          { Icon: ListOrdered, title: 'Pick a captain', body: 'Your captain makes the calls. You set the batting and bowling order.' },
+          { Icon: Flame, title: 'Call it at the break', body: 'Watch live, then make the call that wins the chase.' },
         ].map(({ Icon, title, body }, i) => (
           <Panel key={title} className="flex gap-3 items-start">
             <span className="grid place-items-center w-11 h-11 shrink-0 rounded-xl bg-accent/15 text-accent">
@@ -163,7 +185,7 @@ export function HomePage() {
                 <button
                   key={m.id}
                   type="button"
-                  onClick={() => nav(m.status === 'COMPLETE' ? `/match/${m.id}/result` : `/match/${m.id}/lineup`)}
+                  onClick={() => nav(matchPath(m))}
                   className="game-tile w-full text-left border border-border rounded-xl px-4 py-3 min-h-11 glass cursor-pointer hover:bg-black/5 dark:hover:bg-white/10 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
                   <div className="flex justify-between gap-3 items-center">
