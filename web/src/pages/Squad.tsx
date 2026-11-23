@@ -57,7 +57,7 @@ export function SquadPage() {
         action={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => fill('overall')}>Fill best rated</Button>
-            <Button variant="outline" onClick={() => fill('form')}>Fill in-form XI</Button>
+            <Button variant="outline" onClick={() => fill('form')}>Fill in-form 7</Button>
           </div>
         }
       />
