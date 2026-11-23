@@ -440,12 +440,14 @@ function Conditions({ m }: { m: EngineModel }) {
         <Panel>
           <h3 className="font-bold flex items-center gap-2"><Shield size={18} aria-hidden /> Matchups</h3>
           <p className="text-sm text-muted mt-1">Each batter has separate skills against pace and spin. On every ball the engine checks the one for this bowler’s type:</p>
-          <table className="text-sm mt-2">
+          <div className="overflow-x-auto mt-2">
+          <table className="text-sm">
             <tbody>
               <tr><th className="text-left pr-3 font-semibold">Below {m.matchup.weakBelow}</th><DeltaCells d={m.matchup.weakEffect} /></tr>
               <tr><th className="text-left pr-3 font-semibold">{m.matchup.strongAtLeast} or more</th><DeltaCells d={m.matchup.strongEffect} /></tr>
             </tbody>
           </table>
+          </div>
           <p className="text-sm text-muted mt-2">The scouting report flags these before the match. Bowl spin at a batter who is weak against spin.</p>
         </Panel>
         <Panel>
@@ -719,7 +721,7 @@ then kept between ${r.min} and ${r.max} and rounded to one decimal`}</Formula>
               <li key={t} className="flex items-center gap-2"><RatingBadge value={v as number} className="text-sm px-1.5 py-0.5" /> {t}</li>
             ))}
           </ul>
-          <p className="text-sm text-muted mt-2">A card’s badge shows its average across every match it has played. Sort by it in your collection or lineup, or use “Fill in-form XI”.</p>
+          <p className="text-sm text-muted mt-2">A card’s badge shows its average across every match it has played. Sort by it in your collection or lineup, or use “Fill in-form 7”.</p>
         </Panel>
       </div>
     </Section>

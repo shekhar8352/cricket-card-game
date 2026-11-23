@@ -69,7 +69,7 @@ export function HomePage() {
               <Trophy size={14} aria-hidden /> {user?.arena ?? 'Bronze'} arena
             </p>
             <h1 className="font-display text-5xl sm:text-6xl font-bold uppercase leading-[0.95] mt-3">
-              {user ? <>Your XI is <span className="text-[#ffd166] text-glow">ready</span></> : 'Loading your club…'}
+              {user ? <>Your seven is <span className="text-[#ffd166] text-glow">ready</span></> : 'Loading your club…'}
             </h1>
             <p className="text-white/80 mt-3 max-w-md text-lg">Seven cards. Five overs. Every ball can swing it. Win to climb the arenas and earn new players.</p>
             <div className="flex flex-wrap gap-3 mt-6">
@@ -136,7 +136,7 @@ export function HomePage() {
 
       <section className="grid sm:grid-cols-3 gap-3">
         {[
-          { Icon: Users, title: 'Pick your XI', body: '3 batters, a keeper, an all-rounder and 2 bowlers.' },
+          { Icon: Users, title: 'Pick your seven', body: '3 batters, a keeper, an all-rounder and 2 bowlers.' },
           { Icon: ListOrdered, title: 'Pick a captain', body: 'Your captain makes the calls. You set the batting and bowling order.' },
           { Icon: Flame, title: 'Call it at the break', body: 'Watch live, then make the call that wins the chase.' },
         ].map(({ Icon, title, body }, i) => (
