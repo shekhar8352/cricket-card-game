@@ -10,6 +10,9 @@ services:
       POSTGRES_USER: cricket
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: cricket
+    # Server-local only; reach it from a laptop with `make tunnel`.
+    ports:
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -22,6 +25,8 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
     volumes:
       - redisdata:/data
     healthcheck:
@@ -31,7 +36,9 @@ services:
       retries: 20
 
   api:
-    build: ./server
+    build:
+      context: ./server
+      network: host
     restart: unless-stopped
     depends_on:
       postgres: { condition: service_healthy }
@@ -47,6 +54,7 @@ services:
   web:
     build:
       context: ./web
+      network: host
       args:
         VITE_API_URL: ${PUBLIC_URL}/api
     restart: unless-stopped
