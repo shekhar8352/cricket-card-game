@@ -185,7 +185,7 @@ type PitchDef struct {
 }
 
 var Pitches = []PitchDef{
-	{PitchBalanced, "Balanced", "A fair surface with something for everyone.", "Pick your strongest XI.", 0, 0, 0, 0, 0, 47},
+	{PitchBalanced, "Balanced", "A fair surface with something for everyone.", "Pick your strongest seven.", 0, 0, 0, 0, 0, 47},
 	{PitchGreen, "Green seamer", "Grass on the pitch helps the ball move off the seam.", "Pick an extra pace bowler. Edges carry to the keeper.", 10, -6, 0, 0, 10, 45},
 	{PitchDusty, "Dusty turner", "Dry and cracked. It grips for spinners and gets worse as the match goes on.", "Pick spinners. Batting first avoids the worn 2nd-innings pitch.", -4, 9, 5, 0, 0, 46},
 	{PitchFlat, "Flat road", "Hard and true. The ball comes onto the bat.", "Back your hitters. Defensive fields matter more than wicket-taking.", -1, -1, 0, 5, 0, 51},
