@@ -17,7 +17,7 @@ export function PageHeader({ title, lede, action }: { title: string; lede?: stri
 }
 
 export function Panel({ className, children }: { className?: string; children: ReactNode }) {
-  return <section className={cn('glass border border-border rounded-2xl p-4 sm:p-5 shadow-[0_10px_30px_-18px_rgba(0,0,0,0.35)]', className)}>{children}</section>
+  return <section className={cn('min-w-0 glass border border-border rounded-2xl p-4 sm:p-5 shadow-[0_10px_30px_-18px_rgba(0,0,0,0.35)]', className)}>{children}</section>
 }
 
 export function EmptyState({ title, body, action }: { title: string; body: string; action?: ReactNode }) {
@@ -61,7 +61,7 @@ export function Choice({
       aria-pressed={pressed}
       onClick={onClick}
       className={cn(
-        'min-h-11 rounded-xl border px-3 py-2 text-base font-medium cursor-pointer transition-colors duration-200',
+        'min-h-11 shrink-0 whitespace-nowrap rounded-xl border px-3 py-2 text-base font-medium cursor-pointer transition-colors duration-200',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
         pressed ? 'bg-accent text-white border-accent dark:text-accent-fg' : 'bg-card border-border text-fg hover:bg-black/5 dark:hover:bg-white/10',
       )}
@@ -90,7 +90,7 @@ export function Brand({ size = 'md', tagline }: { size?: 'md' | 'lg'; tagline?: 
       </svg>
       <div className="leading-none">
         <div className={cn('font-display font-bold uppercase tracking-tight', size === 'lg' ? 'text-4xl' : 'text-2xl')}>
-          Pitch <span className="text-cta">XI</span>
+          Pitch <span className="text-cta">7</span>
         </div>
         {tagline && <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted mt-1">5-over card cricket</div>}
       </div>

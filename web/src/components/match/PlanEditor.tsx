@@ -95,7 +95,7 @@ export function PlanEditor({
         <Panel>
           <h2 className="font-display text-2xl font-semibold">Your seven · {filled}/7</h2>
           <p className="text-muted text-sm mb-3">Tap an empty slot to filter that role. Tap a filled slot to remove that player.</p>
-          <div className="felt-tray flex flex-wrap gap-3">
+          <div className="felt-tray grid grid-cols-3 justify-items-center gap-x-2 gap-y-3 sm:flex sm:flex-wrap sm:gap-3">
             {SQUAD_SLOTS.map((s, i) => (
               <div key={s.label} className="text-center">
                 <PlayerCard card={byId[plan.picked[i]]} size="sm" hidden={!plan.picked[i]} placeholder="Empty" onClick={() => (plan.picked[i] ? setSlot(i, '') : setFilter(s.role))} />
@@ -113,12 +113,14 @@ export function PlanEditor({
 
       <section>
         <div className="flex flex-wrap items-center gap-2 mb-3">
-          <h2 className="font-display text-2xl font-semibold mr-2">Pick from your collection</h2>
+          <h2 className="font-display text-2xl font-semibold mr-2 w-full sm:w-auto">Pick from your collection</h2>
+          <div className="chip-row w-full sm:w-auto">
           <button type="button" onClick={() => setFilter('')} className={cn(controlClass, 'cursor-pointer', filter === '' && 'bg-accent text-white dark:text-accent-fg border-accent')}>All</button>
           {(Object.keys(ROLE_LABEL) as Role[]).map((role) => (
             <button key={role} type="button" onClick={() => setFilter(role)} className={cn(controlClass, 'cursor-pointer', filter === role && 'bg-accent text-white dark:text-accent-fg border-accent')}>{ROLE_LABEL[role]}</button>
           ))}
-          <label className="ml-auto flex items-center gap-2 text-sm">
+          </div>
+          <label className="sm:ml-auto flex items-center gap-2 text-sm">
             <span className="text-muted">Sort by</span>
             <select value={traySort} onChange={(e) => setTraySort(e.target.value as 'overall' | 'form')} className={cn(controlClass, 'cursor-pointer')}>
               <option value="overall">Overall</option>

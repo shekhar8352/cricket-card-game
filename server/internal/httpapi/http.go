@@ -83,6 +83,7 @@ func (s *Server) Router() http.Handler {
 		r.Post("/matches/{id}/superover", s.submitSuperOver)
 		r.Get("/matches/{id}/scorecard", s.scorecard)
 		r.Get("/leaderboard", s.leaderboard)
+		r.Get("/users/{id}", s.userProfile)
 		r.Get("/traits", s.traits)
 	})
 	r.Get("/matches/{id}/live", s.live)

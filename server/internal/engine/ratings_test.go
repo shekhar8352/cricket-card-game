@@ -53,7 +53,7 @@ func TestPlayerRatingsDistribution(t *testing.T) {
 	var sum float64
 	var n, high, low int
 	for i := 0; i < 1500; i++ {
-		res, err := Simulate(int64(i+1), ReferenceXI("h"), ReferenceXI("a"), TossResult{})
+		res, err := Simulate(int64(i+1), ReferenceSeven("h"), ReferenceSeven("a"), TossResult{})
 		if err != nil {
 			t.Fatal(err)
 		}

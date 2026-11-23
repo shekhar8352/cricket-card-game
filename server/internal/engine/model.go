@@ -26,7 +26,7 @@ func StrategyMatrix(n int) []MatrixCell {
 	var out []MatrixCell
 	for _, a := range []Approach{ApproachDefend, ApproachBalanced, ApproachAttack} {
 		for _, f := range []FieldPlan{FieldDefend, FieldBalanced, FieldAttack} {
-			bat, bowl := ReferenceXI("bat"), ReferenceXI("bowl")
+			bat, bowl := ReferenceSeven("bat"), ReferenceSeven("bowl")
 			bat.Tactics = Tactics{BatApproach: []Approach{a, a, a}}
 			bowl.Tactics = Tactics{FieldPlan: []FieldPlan{f, f, f, f, f}}
 			runs, wk := 0, 0
@@ -47,15 +47,15 @@ func PitchPar(p Pitch, n int) float64 {
 	runs := 0
 	for i := 0; i < n; i++ {
 		rng := rand.New(rand.NewSource(int64(i + 1)))
-		inn, _ := measureInnings(rng, ReferenceXI("a"), ReferenceXI("b"), p, true)
+		inn, _ := measureInnings(rng, ReferenceSeven("a"), ReferenceSeven("b"), p, true)
 		runs += inn.Runs
 	}
 	return float64(runs) / float64(n)
 }
 
-// ReferenceXI is an average side (cards rated in the low 70s) used for
+// ReferenceSeven is an average side (cards rated in the low 70s) used for
 // measurements: three batters, a keeper, an all-rounder, one pacer and one spinner.
-func ReferenceXI(prefix string) Lineup {
+func ReferenceSeven(prefix string) Lineup {
 	bat := func(tech, power, timing, vp, vs, temp, run int) Attributes {
 		return Attributes{
 			Technique: tech, Power: power, Timing: timing, VsPace: vp, VsSpin: vs, Temperament: temp, Running: run,

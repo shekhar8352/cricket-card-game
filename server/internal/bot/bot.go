@@ -173,7 +173,7 @@ func scaleAttrs(a engine.Attributes, j float64) engine.Attributes {
 
 func botName(rng *rand.Rand) string {
 	first := []string{"Ravi", "Alex", "Sam", "Imran", "Chris", "Dev", "Kai", "Omar", "Ben", "Arjun"}
-	last := []string{"XI", "Strikers", "Knights", "Stars", "Wolves", "Titans", "Riders", "Kings"}
+	last := []string{"Sevens", "Strikers", "Knights", "Stars", "Wolves", "Titans", "Riders", "Kings"}
 	return fmt.Sprintf("%s %s", first[rng.Intn(len(first))], last[rng.Intn(len(last))])
 }
 

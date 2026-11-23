@@ -142,7 +142,7 @@ export function LiveMatchPage() {
             {inSuperOver ? 'Super Over' : inn === 0 ? '1st innings' : 'Chase'}
             {current?.powerplay && <span className="ml-1 rounded bg-cta px-1.5 py-0.5 text-[10px] font-bold text-cta-fg tracking-wide">POWERPLAY · 2 OUT</span>}
           </span>
-          <span>{m?.pitch ? `${m.pitch.name} pitch · par ${m.pitch.par}` : `${OVERS} overs · ${MAX_WICKETS} wickets`}</span>
+          <span className="hidden sm:inline">{m?.pitch ? `${m.pitch.name} pitch · par ${m.pitch.par}` : `${OVERS} overs · ${MAX_WICKETS} wickets`}</span>
         </div>
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 py-3">
           <TeamScore
@@ -163,7 +163,7 @@ export function LiveMatchPage() {
             pending={inningsBreak || paused ? `Target ${state.first.runs + 1}` : 'Yet to bat'}
           />
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 border-t border-white/10 text-center">
+        <div className="grid grid-cols-4 border-t border-white/10 text-center">
           <Stat label="Run rate" value={state.crr.toFixed(2)} />
           {state.second ? (
             <>
@@ -341,11 +341,11 @@ function TeamScore({ name, you, st, active, started, align = 'left', pending }: 
       </div>
       {st && started ? (
         <p className="font-display font-bold tabular leading-none mt-1">
-          <span className="text-4xl sm:text-5xl">{st.runs}/{st.wickets}</span>
-          <span className="text-lg text-white/60 ml-1.5">({oversText(st.legalBalls)})</span>
+          <span className="text-3xl sm:text-5xl">{st.runs}/{st.wickets}</span>
+          <span className="text-base sm:text-lg text-white/60 ml-1 sm:ml-1.5">({oversText(st.legalBalls)})</span>
         </p>
       ) : (
-        <p className="font-display text-2xl font-bold text-white/70 mt-1">{pending}</p>
+        <p className="font-display text-xl sm:text-2xl font-bold text-white/70 mt-1">{pending}</p>
       )}
     </div>
   )
@@ -353,9 +353,9 @@ function TeamScore({ name, you, st, active, started, align = 'left', pending }: 
 
 function Stat({ label, value, hot }: { label: string; value: string; hot?: boolean }) {
   return (
-    <div className="px-3 py-2 border-white/10 [&:not(:first-child)]:border-l">
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-white/50">{label}</div>
-      <div className={cn('font-display text-xl font-bold tabular', hot && 'text-cta')}>{value}</div>
+    <div className="px-1 sm:px-3 py-2 border-white/10 [&:not(:first-child)]:border-l min-w-0">
+      <div className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wide sm:tracking-wider text-white/50 truncate">{label}</div>
+      <div className={cn('font-display text-base sm:text-xl font-bold tabular', hot && 'text-cta')}>{value}</div>
     </div>
   )
 }
@@ -363,11 +363,11 @@ function Stat({ label, value, hot }: { label: string; value: string; hot?: boole
 function SituationBanner({ sit }: { sit: Situation }) {
   const { cls, Icon } = toneStyles[sit.tone]
   return (
-    <div className={cn('glass flex items-start gap-3 rounded-2xl border-2 px-4 py-3 fade-up', cls)} key={sit.headline} role="status">
+    <div className={cn('glass flex items-start gap-3 rounded-2xl border-2 px-3 sm:px-4 py-2.5 sm:py-3 fade-up', cls)} key={sit.headline} role="status">
       <Icon className="mt-1 shrink-0" size={22} aria-hidden />
       <div>
-        <p className="font-display text-2xl font-bold leading-tight">{sit.headline}</p>
-        {sit.detail && <p className="text-muted">{sit.detail}</p>}
+        <p className="font-display text-xl sm:text-2xl font-bold leading-tight">{sit.headline}</p>
+        {sit.detail && <p className="text-sm sm:text-base text-muted">{sit.detail}</p>}
       </div>
     </div>
   )

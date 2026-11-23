@@ -332,6 +332,13 @@ export interface AccountStats {
   }
 }
 
+/** Another player's public profile (opened from the leaderboard). */
+export interface PublicProfile extends AccountStats {
+  me: boolean
+  /** Their saved default seven, cards in batting order; null if none saved. */
+  squad: { cards: PlayerCard[]; battingOrder: string[]; bowlingPlan: string[]; captainId?: string | null } | null
+}
+
 export type Approach = 'defend' | 'balanced' | 'attack'
 export type FieldPlan = 'defend' | 'balanced' | 'attack'
 export type Pitch = 'balanced' | 'green' | 'dusty' | 'flat'

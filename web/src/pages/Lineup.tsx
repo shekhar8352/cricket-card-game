@@ -108,7 +108,7 @@ export function LineupPage() {
           <div className="flex flex-wrap gap-2">
             {saved && <Button variant="outline" disabled={!changedFromDefault} onClick={() => { setPlan(null); setNote('Back to your default.') }}><RotateCcw size={16} aria-hidden /> Load my default</Button>}
             <Button variant="outline" onClick={() => fill('overall')}>Fill best rated</Button>
-            <Button variant="outline" onClick={() => fill('form')} title="Picks by average match rating. Cards that haven't played yet come after, by overall.">Fill in-form XI</Button>
+            <Button variant="outline" onClick={() => fill('form')} title="Picks by average match rating. Cards that haven't played yet come after, by overall.">Fill in-form 7</Button>
           </div>
         }
       />

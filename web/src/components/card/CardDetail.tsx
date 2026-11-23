@@ -17,7 +17,7 @@ function bars(card: PlayerCard, keys: { k: keyof PlayerCard['attrs']; label: str
   return keys.map(({ k, label }) => ({ label, v: a[k] }))
 }
 
-export function CardDetail({ card, open, onOpenChange }: { card: PlayerCard | null; open: boolean; onOpenChange: (o: boolean) => void }) {
+export function CardDetail({ card, open, onOpenChange, readOnly }: { card: PlayerCard | null; open: boolean; onOpenChange: (o: boolean) => void; readOnly?: boolean }) {
   const nav = useNavigate()
   const model = useQuery({ queryKey: ['engine-model'], queryFn: api.engineModel, staleTime: Infinity })
   if (!card) return null
@@ -119,7 +119,7 @@ export function CardDetail({ card, open, onOpenChange }: { card: PlayerCard | nu
               </ul>
             </div>
           )}
-          <Button className="mt-6 w-full" onClick={() => { onOpenChange(false); nav(`/training?target=${card.id}`) }}>Train this player</Button>
+          {!readOnly && <Button className="mt-6 w-full" onClick={() => { onOpenChange(false); nav(`/training?target=${card.id}`) }}>Train this player</Button>}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

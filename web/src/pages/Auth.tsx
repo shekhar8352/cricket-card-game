@@ -53,7 +53,7 @@ export function AuthPage() {
         <div className="relative z-10">
           <p className="inline-flex rounded-full bg-black/25 px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-[#ffd166]">Free to play</p>
           <h1 className="font-display text-7xl font-bold uppercase leading-[0.9] mt-4">
-            Build your XI.<br /><span className="text-[#ffd166] text-glow">Own the final over.</span>
+            Build your seven.<br /><span className="text-[#ffd166] text-glow">Own the final over.</span>
           </h1>
           <ul className="mt-8 space-y-4 text-lg max-w-md">
             {perks.map(({ Icon, text }) => (
@@ -69,7 +69,7 @@ export function AuthPage() {
             <div key={r} className="w-32 fade-up" style={{ transform: `rotate(${(i - 1) * 12}deg) translateY(${i === 1 ? -18 : 0}px)`, marginLeft: i === 0 ? 0 : -40, animationDelay: `${i * 120}ms` }}>
               <div className="game-card-lift" style={{ boxShadow: `0 18px 40px rgba(0,0,0,0.45), 0 0 26px ${glow[r]}` }}>
                 <span className={`game-card-face game-card-front rarity-${r} items-center justify-center gap-2`} style={{ boxShadow: `inset 0 0 0 3px ${glow[r]}` }}>
-                  <span className="game-card-mark">XI</span>
+                  <span className="game-card-mark">7</span>
                   <span className="text-xs font-bold uppercase tracking-widest">{r}</span>
                 </span>
               </div>

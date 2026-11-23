@@ -25,7 +25,7 @@ export function PlayPage() {
     <div>
       <PageHeader
         title="Choose your match"
-        lede="Pick an opponent, set your XI, and watch five overs of live action."
+        lede="Pick an opponent, set your seven, and watch five overs of live action."
       />
       <div className="grid md:grid-cols-2 gap-4">
         <button

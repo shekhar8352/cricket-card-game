@@ -12,7 +12,7 @@ func card(id, player, name string, role engine.Role) engine.Card {
 	return engine.Card{ID: id, PlayerID: player, Name: name, Role: role, Rarity: engine.RaritySilver}
 }
 
-var xi = []engine.Card{
+var seven = []engine.Card{
 	card("c1", "p-bat", "Opener", engine.RoleBAT),
 	card("c2", "p-bowl", "Quick", engine.RoleBOWL),
 	card("c3", "p-wk", "Gloves", engine.RoleWK),
@@ -24,7 +24,7 @@ func match(id string, day int, side, winner string, myRuns int, batters []engine
 		other = "home"
 	}
 	return Match{
-		ID: id, Side: side, Opponent: "Bot", VsBot: true, Cards: xi,
+		ID: id, Side: side, Opponent: "Bot", VsBot: true, Cards: seven,
 		PlayedAt: time.Date(2026, 1, day, 0, 0, 0, 0, time.UTC),
 		Result: engine.MatchResult{
 			Winner: winner,

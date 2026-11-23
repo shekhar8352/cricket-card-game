@@ -325,7 +325,7 @@ func TestRivalEdge(t *testing.T) {
 }
 
 func TestDeriveCaptaincyIsStableAndBounded(t *testing.T) {
-	for _, c := range ReferenceXI("x").Cards {
+	for _, c := range ReferenceSeven("x").Cards {
 		a, b := DeriveCaptaincy(c), DeriveCaptaincy(c)
 		if a != b {
 			t.Fatal("derived captaincy must be deterministic")
