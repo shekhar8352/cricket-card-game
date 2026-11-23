@@ -9,6 +9,7 @@ import { LineupPage } from './pages/Lineup'
 import { LiveMatchPage } from './pages/LiveMatch'
 import { ResultPage } from './pages/Result'
 import { TrainingPage } from './pages/Training'
+import { ProfilePage } from './pages/Profile'
 import { LeaderboardPage } from './pages/Leaderboard'
 import { HistoryPage } from './pages/History'
 import { SquadPage } from './pages/Squad'
@@ -40,6 +41,7 @@ export default function App() {
         <Route path="/collection" element={<CollectionPage />} />
         <Route path="/training" element={<TrainingPage />} />
         <Route path="/leaderboard" element={<LeaderboardPage />} />
+        <Route path="/players/:id" element={<ProfilePage />} />
         <Route path="/history" element={<HistoryPage />} />
         <Route path="/account" element={<AccountPage />} />
         <Route path="/engine" element={<EnginePage />} />

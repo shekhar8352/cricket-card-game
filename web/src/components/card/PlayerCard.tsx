@@ -143,7 +143,7 @@ export function PlayerCard({
   const [flip] = useState(Boolean(hidden && card))
   const back = (
     <span className={cn('game-card-face', card ? 'game-card-back' : 'game-card-slot')}>
-      {card ? <span className="game-card-mark" aria-hidden>XI</span> : <span className="font-display text-2xl leading-none" aria-hidden>+</span>}
+      {card ? <span className="game-card-mark" aria-hidden>7</span> : <span className="font-display text-2xl leading-none" aria-hidden>+</span>}
       <span className="px-1 text-xs font-semibold">{placeholder}</span>
     </span>
   )

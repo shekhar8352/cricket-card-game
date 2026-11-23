@@ -447,3 +447,18 @@ body {
 .meter-track { background: rgba(148, 163, 184, 0.2); }
 
 .fade-up { animation: card-deal 360ms ease-out both; }
+
+/* Filter chips: one swipeable row on phones, wrapping rows from sm up. */
+.chip-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+@media (max-width: 639px) {
+  .chip-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin-inline: -1rem;
+    padding-inline: 1rem;
+    scrollbar-width: none;
+    scroll-padding-inline: 1rem;
+  }
+  .chip-row::-webkit-scrollbar { display: none; }
+  .felt-tray { padding: 10px; border-radius: 14px; }
+}
