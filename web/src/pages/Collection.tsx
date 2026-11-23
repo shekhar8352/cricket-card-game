@@ -51,13 +51,13 @@ export function CollectionPage() {
           <label htmlFor="card-search" className="font-medium">Search</label>
           <input id="card-search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name or country" className={cn(controlClass, 'w-full max-w-sm mt-1')} />
         </div>
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Role">
+        <div className="chip-row" role="group" aria-label="Role">
           <Choice pressed={role === ''} onClick={() => setRole('')}>All roles</Choice>
           {(Object.keys(ROLE_LABEL) as Role[]).map((r) => (
             <Choice key={r} pressed={role === r} onClick={() => setRole(r)}>{ROLE_LABEL[r]}</Choice>
           ))}
         </div>
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Rarity">
+        <div className="chip-row" role="group" aria-label="Rarity">
           <Choice pressed={rarity === ''} onClick={() => setRarity('')}>All rarities</Choice>
           {(['Bronze', 'Silver', 'Gold', 'Legend'] as Rarity[]).map((r) => (
             <Choice key={r} pressed={rarity === r} onClick={() => setRarity(r)}>{r}</Choice>
