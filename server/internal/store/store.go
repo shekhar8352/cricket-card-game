@@ -265,24 +265,29 @@ type MatchRow struct {
 	BreakStartedAt  *time.Time
 	SuperState      []byte     // engine.MatchResult of the tied match, while picking a Super Over
 	SuperStartedAt  *time.Time
+	Mode            string // "ranked" or "friendly"
+	RoomCode        *string
 }
 
 const matchCols = `id, home_user_id, away_user_id, is_bot, bot_profile, status, seed, toss, result, ball_log,
 	winner_user_id, trophy_delta_home, trophy_delta_away, created_at, completed_at,
-	break_state, break_started_at, super_state, super_started_at`
+	break_state, break_started_at, super_state, super_started_at, mode, room_code`
 
 func matchDest(m *MatchRow) []any {
 	return []any{&m.ID, &m.HomeUserID, &m.AwayUserID, &m.IsBot, &m.BotProfile, &m.Status, &m.Seed, &m.Toss, &m.Result, &m.BallLog,
 		&m.WinnerUserID, &m.TrophyDeltaHome, &m.TrophyDeltaAway, &m.CreatedAt, &m.CompletedAt,
-		&m.BreakState, &m.BreakStartedAt, &m.SuperState, &m.SuperStartedAt}
+		&m.BreakState, &m.BreakStartedAt, &m.SuperState, &m.SuperStartedAt, &m.Mode, &m.RoomCode}
 }
 
 func (s *Store) InsertMatch(ctx context.Context, m MatchRow) (MatchRow, error) {
+	if m.Mode == "" {
+		m.Mode = "ranked"
+	}
 	err := s.Pool.QueryRow(ctx, `
-		INSERT INTO matches (home_user_id, away_user_id, is_bot, bot_profile, status, seed)
-		VALUES ($1,$2,$3,$4,$5,$6)
+		INSERT INTO matches (home_user_id, away_user_id, is_bot, bot_profile, status, seed, mode, room_code)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 		RETURNING id, created_at
-	`, m.HomeUserID, m.AwayUserID, m.IsBot, m.BotProfile, m.Status, m.Seed).Scan(&m.ID, &m.CreatedAt)
+	`, m.HomeUserID, m.AwayUserID, m.IsBot, m.BotProfile, m.Status, m.Seed, m.Mode, m.RoomCode).Scan(&m.ID, &m.CreatedAt)
 	return m, err
 }
 
@@ -302,7 +307,7 @@ func (s *Store) MatchesForUser(ctx context.Context, userID uuid.UUID, limit int)
 	rows, err := s.Pool.Query(ctx, `
 		SELECT `+matchCols+`
 		FROM matches
-		WHERE home_user_id=$1 OR away_user_id=$1
+		WHERE (home_user_id=$1 OR away_user_id=$1) AND status <> 'CANCELLED'
 		ORDER BY created_at DESC LIMIT $2
 	`, userID, limit)
 	if err != nil {
@@ -492,7 +497,7 @@ func (s *Store) CompletedMatchesWithLineup(ctx context.Context, userID uuid.UUID
 		FROM matches m
 		JOIN match_lineups l ON l.match_id = m.id AND l.user_id = $2
 		WHERE (m.home_user_id = $1 OR m.away_user_id = $1)
-			AND m.status = 'COMPLETE' AND m.result IS NOT NULL
+			AND m.status = 'COMPLETE' AND m.result IS NOT NULL AND m.mode <> 'friendly'
 		ORDER BY m.created_at
 	`, userID, userID.String())
 	if err != nil {
