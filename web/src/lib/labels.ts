@@ -34,6 +34,7 @@ export function statusLabel(status: string, outcome?: 'win' | 'loss' | 'tie') {
     if (outcome === 'loss') return 'Loss'
   }
   if (status === 'MATCHING') return 'Finding opponent'
+  if (status === 'WAITING_ROOM') return 'Waiting for a friend'
   if (status === 'LINEUP_PENDING') return 'Lineup needed'
   if (status === 'SIMULATING') return 'Live now'
   if (status === 'INNINGS_BREAK') return 'Innings break: your call'
@@ -44,6 +45,6 @@ export function statusLabel(status: string, outcome?: 'win' | 'loss' | 'tie') {
 /** Where to open a match from a list. */
 export function matchPath(m: { id: string; status: string }) {
   if (m.status === 'COMPLETE') return `/match/${m.id}/result`
-  if (m.status === 'LINEUP_PENDING' || m.status === 'MATCHING') return `/match/${m.id}/lineup`
+  if (m.status === 'LINEUP_PENDING' || m.status === 'MATCHING' || m.status === 'WAITING_ROOM') return `/match/${m.id}/lineup`
   return `/match/${m.id}/live`
 }

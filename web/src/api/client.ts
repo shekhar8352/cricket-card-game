@@ -33,9 +33,10 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
     if (!path.startsWith('/auth')) window.location.href = '/auth'
   }
   if (!res.ok) {
-    const t = await res.text()
+    const t = (await res.text()).trim()
     throw new Error(t || res.statusText)
   }
+  if (res.status === 204) return undefined as T
   return res.json()
 }
 
@@ -72,6 +73,9 @@ export const api = {
   createMatch: (mode: 'bot' | 'pvp') =>
     req<MatchDTO>('/matches', { method: 'POST', body: JSON.stringify({ mode }) }),
   match: (id: string) => req<MatchDTO>(`/matches/${id}`),
+  createRoom: () => req<MatchDTO>('/rooms', { method: 'POST' }),
+  joinRoom: (code: string) => req<MatchDTO>('/rooms/join', { method: 'POST', body: JSON.stringify({ code }) }),
+  cancelRoom: (id: string) => req<void>(`/rooms/${id}/cancel`, { method: 'POST' }),
   matches: () => req<MatchDTO[]>('/matches'),
   lockLineup: (id: string, body: LineupBody) =>
     req<MatchDTO>(`/matches/${id}/lineup`, { method: 'POST', body: JSON.stringify(body) }),
