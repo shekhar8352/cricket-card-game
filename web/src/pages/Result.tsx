@@ -8,6 +8,7 @@ import { useState } from 'react'
 import { Award, Brain, Crown, Flame, Handshake, Sparkles, Target, Trophy } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { ratingBand } from '../lib/ratings'
+import { STAGE_LABEL } from '../lib/labels'
 import { RatingBadge } from '../components/card/RatingBadge'
 import { PlayerAvatar } from '../components/card/PlayerAvatar'
 import type { PlayerCard as Card } from '../types/engine'
@@ -24,7 +25,10 @@ export function ResultPage() {
   const res = m?.result
   const model = useQuery({ queryKey: ['engine-model'], queryFn: api.engineModel, staleTime: Infinity })
   if (!m || !res) return <p className="text-muted">Loading the scorecard…</p>
-  const friendly = m.mode === 'friendly'
+  const inTournament = m.mode === 'tournament' && !!m.tournamentId
+  const tournamentLink = `/tournaments/${m.tournamentId}`
+  const tournamentName = m.tournamentName
+  const friendly = m.mode === 'friendly' || inTournament
   const youWon = m.winnerUserId === me.data?.user.id || (m.isBot && res.winner === (m.youAreHome ? 'home' : 'away'))
   const tie = res.winner === 'tie'
   const delta = m.youAreHome ? m.trophyDeltaHome : m.trophyDeltaAway
@@ -86,7 +90,10 @@ export function ResultPage() {
         {friendly ? (
         <Panel>
           <h2 className="font-display text-2xl font-bold uppercase flex items-center gap-2"><Handshake size={20} className="text-[#38bdf8]" aria-hidden /> Friendly</h2>
-          <p className="text-muted mt-1">Played for bragging rights. The result is saved to both histories; trophies, cards, XP, captain reputation and streaks are unchanged.</p>
+          <p className="text-muted mt-1">
+            {inTournament ? <>This result counts in <Link to={tournamentLink} className="underline font-semibold">{tournamentName}</Link>. </> : 'Played for bragging rights. '}
+            The result is saved to both histories; trophies, cards, XP, captain reputation and streaks are unchanged.
+          </p>
         </Panel>
         ) : (
         <Panel>
@@ -110,6 +117,10 @@ export function ResultPage() {
   async function again() {
     setBusy(true)
     try {
+      if (inTournament) {
+        nav(tournamentLink)
+        return
+      }
       const next = friendly ? await api.createRoom() : await api.createMatch('bot')
       nav(`/match/${next.id}/lineup`)
     } finally {
@@ -121,14 +132,14 @@ export function ResultPage() {
     <div className="space-y-6">
       <section className={cn('relative overflow-hidden rounded-3xl px-5 py-8 sm:py-10 text-center text-white fade-up', tie ? 'bg-[linear-gradient(160deg,#334155,#0f172a)]' : youWon ? 'hero-stadium' : 'bg-[radial-gradient(ellipse_at_top,rgba(255,107,107,0.35),transparent_60%),linear-gradient(160deg,#3b0d12,#12060a)]')}>
         <div className="relative z-10">
-          <p className="text-xs font-bold uppercase tracking-[0.25em] text-white/70">{friendly ? 'Friendly' : m.isBot ? 'Quick match' : 'Versus player'} · vs {m.opponent.name}</p>
+          <p className="text-xs font-bold uppercase tracking-[0.25em] text-white/70">{inTournament ? `${m.tournamentName} · ${STAGE_LABEL[m.stage ?? ''] ?? 'Tournament'}` : friendly ? 'Friendly' : m.isBot ? 'Quick match' : 'Versus player'} · vs {m.opponent.name}</p>
           <h1 className={cn('font-display text-6xl sm:text-8xl font-bold uppercase leading-none mt-2', youWon && 'text-[#ffd166] text-glow')}>
             {tie ? 'Tied!' : youWon ? 'Victory!' : 'Defeat'}
           </h1>
           <p className="font-display text-2xl sm:text-3xl font-semibold mt-2">{tie ? 'Scores level after 5 overs' : `${winnerName} ${res.margin}`}</p>
           {friendly ? (
             <div className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 mt-4 font-display text-xl font-bold bg-white/10">
-              <Handshake size={20} aria-hidden /> Friendly · no trophies
+              {inTournament ? <Trophy size={20} aria-hidden /> : <Handshake size={20} aria-hidden />} {inTournament ? 'Tournament' : 'Friendly'} · no trophies
             </div>
           ) : (
           <div className={cn('inline-flex items-center gap-2 rounded-full px-4 py-1.5 mt-4 font-display text-2xl font-bold', (delta ?? 0) > 0 ? 'bg-[#ffd166] text-[#1a1205]' : (delta ?? 0) < 0 ? 'bg-white/15' : 'bg-white/10')}>
@@ -146,7 +157,7 @@ export function ResultPage() {
             ))}
           </div>
           <div className="flex flex-wrap justify-center gap-3 mt-6">
-            <Button className="min-h-13 px-7 text-xl" disabled={busy} onClick={again}>{busy ? 'Starting…' : friendly ? 'New room' : youWon ? 'Keep the streak going' : 'Rematch'}</Button>
+            <Button className="min-h-13 px-7 text-xl" disabled={busy} onClick={again}>{busy ? 'Starting…' : inTournament ? 'Back to tournament' : friendly ? 'New room' : youWon ? 'Keep the streak going' : 'Rematch'}</Button>
             <Button variant="outline" className="!bg-white/10 !border-white/25 text-white" onClick={() => nav(`/match/${id}/live`)}>Watch replay</Button>
             <Button variant="ghost" className="text-white hover:!bg-white/10" onClick={() => nav('/')}>Home</Button>
           </div>

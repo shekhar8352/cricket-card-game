@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Clock, Handshake, RotateCcw, Save, Sparkles } from 'lucide-react'
+import { Clock, Handshake, RotateCcw, Save, Sparkles, Trophy } from 'lucide-react'
+import { STAGE_LABEL } from '../lib/labels'
 import { api } from '../api/client'
 import { PlayerCard } from '../components/card/PlayerCard'
 import { Button } from '../components/ui/button'
@@ -117,6 +118,13 @@ export function LineupPage() {
           </div>
         }
       />
+
+      {match.data?.mode === 'tournament' && match.data.tournamentId && (
+        <Link to={`/tournaments/${match.data.tournamentId}`} className="flex items-center gap-3 rounded-2xl border border-[#ffd166]/60 bg-[#ffd166]/10 px-4 py-3 hover:bg-[#ffd166]/15">
+          <Trophy size={20} className="text-[#b7791f] dark:text-[#ffd166] shrink-0" aria-hidden />
+          <p><b>{match.data.tournamentName}</b> · {STAGE_LABEL[match.data.stage ?? ''] ?? 'Tournament'} match. No trophies or cards at stake; the result counts in the tournament. <span className="underline">View table</span></p>
+        </Link>
+      )}
 
       {match.data?.mode === 'friendly' && (
         <div className="flex items-center gap-3 rounded-2xl border border-[#38bdf8]/50 bg-[#38bdf8]/10 px-4 py-3">
