@@ -11,7 +11,7 @@ import (
 func TestRoomCode(t *testing.T) {
 	seen := map[string]bool{}
 	for range 500 {
-		c, err := newRoomCode()
+		c, err := NewRoomCode()
 		if err != nil {
 			t.Fatal(err)
 		}

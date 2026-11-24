@@ -38,7 +38,8 @@ var (
 	ErrRoomTaken    = errors.New("Someone else already joined that room.")
 )
 
-func newRoomCode() (string, error) {
+// NewRoomCode makes a 6-character join code (also used for tournaments).
+func NewRoomCode() (string, error) {
 	var b strings.Builder
 	for i := 0; i < RoomCodeLen; i++ {
 		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(roomAlphabet))))
@@ -79,7 +80,7 @@ func (s *Service) CreateRoom(ctx context.Context, user store.User) (store.MatchR
 	}
 	var lastErr error
 	for range 5 { // retry on the (unlikely) code collision with another open room
-		code, err := newRoomCode()
+		code, err := NewRoomCode()
 		if err != nil {
 			return store.MatchRow{}, err
 		}

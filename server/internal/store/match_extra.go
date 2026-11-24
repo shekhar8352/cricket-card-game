@@ -91,7 +91,7 @@ func (s *Store) Rivalries(ctx context.Context, userID uuid.UUID, players []strin
 func (s *Store) WinStreak(ctx context.Context, userID uuid.UUID) (int, error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT winner_user_id FROM matches
-		WHERE (home_user_id=$1 OR away_user_id=$1) AND status='COMPLETE' AND mode <> 'friendly'
+		WHERE (home_user_id=$1 OR away_user_id=$1) AND status='COMPLETE' AND mode = 'ranked'
 		ORDER BY completed_at DESC NULLS LAST, created_at DESC LIMIT 50`, userID)
 	if err != nil {
 		return 0, err
