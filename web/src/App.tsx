@@ -16,6 +16,7 @@ import { SquadPage } from './pages/Squad'
 import { AccountPage } from './pages/Account'
 import { EnginePage } from './pages/Engine'
 import { JoinRoomPage } from './pages/JoinRoom'
+import { TournamentPage } from './pages/Tournament'
 import { PublicShell } from './components/layout/PublicShell'
 import type { ReactNode } from 'react'
 
@@ -41,6 +42,7 @@ export default function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/play" element={<PlayPage />} />
         <Route path="/join/:code" element={<JoinRoomPage />} />
+        <Route path="/tournaments/:id" element={<TournamentPage />} />
         <Route path="/squad" element={<SquadPage />} />
         <Route path="/collection" element={<CollectionPage />} />
         <Route path="/training" element={<TrainingPage />} />

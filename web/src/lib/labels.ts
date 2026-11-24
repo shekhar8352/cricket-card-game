@@ -48,3 +48,19 @@ export function matchPath(m: { id: string; status: string }) {
   if (m.status === 'LINEUP_PENDING' || m.status === 'MATCHING' || m.status === 'WAITING_ROOM') return `/match/${m.id}/lineup`
   return `/match/${m.id}/live`
 }
+
+export function tournamentStatusLabel(status: string) {
+  if (status === 'LOBBY') return 'Waiting for players'
+  if (status === 'LEAGUE') return 'League stage'
+  if (status === 'PLAYOFFS') return 'Knockouts'
+  if (status === 'COMPLETE') return 'Finished'
+  return 'Closed'
+}
+
+export const STAGE_LABEL: Record<string, string> = {
+  league: 'League',
+  qualifier1: 'Qualifier 1',
+  eliminator: 'Eliminator',
+  qualifier2: 'Qualifier 2',
+  final: 'Final',
+}
