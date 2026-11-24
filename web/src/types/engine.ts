@@ -209,7 +209,12 @@ export interface MatchDTO {
   id: string
   status: string
   isBot: boolean
-  opponent: { name: string; trophies: number }
+  /** "friendly" matches come from rooms and award no trophies, cards or XP. */
+  mode?: 'ranked' | 'friendly'
+  /** While a friendly room waits for a guest: the code to share and when it closes. */
+  roomCode?: string
+  roomExpiresAt?: string
+  opponent: { name: string; trophies: number | null }
   homeLineup?: LineupDTO
   awayLineup?: LineupDTO
   pitch?: PitchDef

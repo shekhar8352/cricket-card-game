@@ -7,7 +7,7 @@ import { PlayerCard } from '../components/card/PlayerCard'
 import { matchPath, statusLabel } from '../lib/labels'
 import { useUI } from '../store/ui'
 import { useState } from 'react'
-import { Flame, ListOrdered, Play, Swords, Trophy, Users } from 'lucide-react'
+import { Flame, Handshake, ListOrdered, Play, Swords, Trophy, Users } from 'lucide-react'
 
 export function HomePage() {
   const nav = useNavigate()
@@ -25,7 +25,8 @@ export function HomePage() {
   const progress = user ? Math.min(100, ((user.trophies - prevMin) / Math.max(1, nextMin - prevMin)) * 100) : 0
   const best = (cards.data ?? []).slice().sort((a, b) => b.overall - a.overall).slice(0, 5)
   const recent = (hist.data ?? []).slice(0, 5)
-  const done = (hist.data ?? []).filter((m) => m.status === 'COMPLETE')
+  // Friendlies stay out of the record, like they do for trophies and streaks.
+  const done = (hist.data ?? []).filter((m) => m.status === 'COMPLETE' && m.mode !== 'friendly')
   const played = done.length
   const wins = done.filter((m) => m.winnerUserId === user?.id).length
   const streak = me.data?.streak
@@ -80,6 +81,9 @@ export function HomePage() {
               <Button variant="pitch" className="min-h-14 px-6 text-xl" disabled={!!busy} onClick={() => start('pvp')}>
                 <Swords size={20} aria-hidden />
                 {busy === 'pvp' ? 'Searching…' : 'Versus player'}
+              </Button>
+              <Button variant="outline" className="min-h-14 px-5 text-lg !bg-white/10 !border-white/25 text-white" disabled={!!busy} onClick={() => nav('/play#friendly')}>
+                <Handshake size={20} aria-hidden /> Play a friend
               </Button>
             </div>
             {err && <p className="text-[#ffb4b4] mt-3" role="alert">{err}</p>}
@@ -196,6 +200,7 @@ export function HomePage() {
                         </span>
                       )}
                       vs {m.opponent.name}
+                      {m.mode === 'friendly' && <span className="rounded bg-[#38bdf8]/15 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-[#0284c7] dark:text-[#7dd3fc]">Friendly</span>}
                     </span>
                     <span className={outcome === 'win' && m.status === 'COMPLETE' ? 'text-success font-semibold' : outcome === 'loss' && m.status === 'COMPLETE' ? 'text-wicket font-semibold' : 'text-muted'}>{label}</span>
                   </div>
