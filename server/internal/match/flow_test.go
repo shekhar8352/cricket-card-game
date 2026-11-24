@@ -38,10 +38,10 @@ func TestCaptainReadsAndRivalries(t *testing.T) {
 		{BattingSide: "home", BowlingSide: "away", Calls: []engine.OverCall{{BatRead: true}, {FieldRead: true}, {BatRead: true, FieldRead: true}}},
 		{BattingSide: "away", BowlingSide: "home", Calls: []engine.OverCall{{FieldRead: true}}},
 	}}
-	if got := captainReads(res, "home"); got != 3 {
+	if got := CaptainReads(res, "home"); got != 3 {
 		t.Errorf("home reads = %d, want 3 (2 batting + 1 fielding)", got)
 	}
-	if got := captainReads(res, "away"); got != 2 {
+	if got := CaptainReads(res, "away"); got != 2 {
 		t.Errorf("away reads = %d, want 2", got)
 	}
 

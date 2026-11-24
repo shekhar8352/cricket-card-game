@@ -392,7 +392,7 @@ func (s *Service) tryFinishSuperOver(ctx context.Context, matchID uuid.UUID) err
 // finishMatch settles trophies (with win-streak bonus), rewards, ratings and XP,
 // captain reputation and rivalries. A friendly only records the result.
 func (s *Service) finishMatch(ctx context.Context, m store.MatchRow, res engine.MatchResult, home, away engine.Lineup) error {
-	friendly := m.Mode == ModeFriendly
+	friendly := m.Mode == ModeFriendly || m.Mode == ModeTournament // nothing at stake but the result
 	homeU, err := s.Store.UserByID(ctx, m.HomeUserID)
 	if err != nil {
 		return err
@@ -439,7 +439,7 @@ func (s *Service) finishMatch(ctx context.Context, m store.MatchRow, res engine.
 	}
 	// Captain reputation: +1 per match, +1 for a win, +1 per two good reads.
 	for _, side := range []string{"home", "away"} {
-		ex.Reads[side] = captainReads(res, side)
+		ex.Reads[side] = CaptainReads(res, side)
 		if friendly {
 			continue
 		}
@@ -470,6 +470,7 @@ func (s *Service) finishMatch(ctx context.Context, m store.MatchRow, res engine.
 
 	if friendly {
 		s.publish(ctx, m, "complete")
+		s.afterComplete(ctx, m)
 		return nil
 	}
 
@@ -518,12 +519,20 @@ func (s *Service) finishMatch(ctx context.Context, m store.MatchRow, res engine.
 		}
 	}
 	s.publish(ctx, m, "complete")
+	s.afterComplete(ctx, m)
 	return nil
 }
 
-// captainReads counts overs in which a side's captain made the best reply to
+// afterComplete runs the OnComplete hook (tournaments advance from it).
+func (s *Service) afterComplete(ctx context.Context, m store.MatchRow) {
+	if s.OnComplete != nil {
+		s.OnComplete(ctx, m)
+	}
+}
+
+// CaptainReads counts overs in which a side's captain made the best reply to
 // the other captain's actual call.
-func captainReads(res engine.MatchResult, side string) int {
+func CaptainReads(res engine.MatchResult, side string) int {
 	n := 0
 	for _, inn := range res.Innings {
 		for _, c := range inn.Calls {
