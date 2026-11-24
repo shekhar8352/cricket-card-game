@@ -1,5 +1,5 @@
 import type { SavedDefault } from '../lib/plan'
-import type { AccountStats, PublicProfile, EngineModel, LeaderRow, MatchDTO, OddsRequest, OddsResult, PlayerCard, Streak, SuperOverPicks, TrainResult, User } from '../types/engine'
+import type { AccountStats, PublicProfile, EngineModel, LeaderRow, MatchDTO, OddsRequest, OddsResult, PlayerCard, Streak, SuperOverPicks, Tournament, TournamentSummary, TrainResult, User } from '../types/engine'
 
 /** Before a match the player picks only the seven, the captain and the orders. */
 export interface LineupBody {
@@ -33,9 +33,10 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
     if (!path.startsWith('/auth')) window.location.href = '/auth'
   }
   if (!res.ok) {
-    const t = await res.text()
+    const t = (await res.text()).trim()
     throw new Error(t || res.statusText)
   }
+  if (res.status === 204) return undefined as T
   return res.json()
 }
 
@@ -72,6 +73,18 @@ export const api = {
   createMatch: (mode: 'bot' | 'pvp') =>
     req<MatchDTO>('/matches', { method: 'POST', body: JSON.stringify({ mode }) }),
   match: (id: string) => req<MatchDTO>(`/matches/${id}`),
+  createRoom: () => req<MatchDTO>('/rooms', { method: 'POST' }),
+  joinRoom: (code: string) => req<MatchDTO>('/rooms/join', { method: 'POST', body: JSON.stringify({ code }) }),
+  cancelRoom: (id: string) => req<void>(`/rooms/${id}/cancel`, { method: 'POST' }),
+  /** Joins whatever the code belongs to: a friendly room or a tournament lobby. */
+  joinCode: (code: string) =>
+    req<{ type: 'room' | 'tournament'; id: string }>('/join', { method: 'POST', body: JSON.stringify({ code }) }),
+  tournaments: () => req<TournamentSummary[]>('/tournaments'),
+  tournament: (id: string) => req<Tournament>(`/tournaments/${id}`),
+  createTournament: (name: string) => req<Tournament>('/tournaments', { method: 'POST', body: JSON.stringify({ name }) }),
+  startTournament: (id: string) => req<Tournament>(`/tournaments/${id}/start`, { method: 'POST' }),
+  leaveTournament: (id: string) => req<void>(`/tournaments/${id}/leave`, { method: 'POST' }),
+  autoplayTournament: (id: string) => req<Tournament>(`/tournaments/${id}/autoplay`, { method: 'POST' }),
   matches: () => req<MatchDTO[]>('/matches'),
   lockLineup: (id: string, body: LineupBody) =>
     req<MatchDTO>(`/matches/${id}/lineup`, { method: 'POST', body: JSON.stringify(body) }),

@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Clock, RotateCcw, Save, Sparkles } from 'lucide-react'
+import { Clock, Handshake, RotateCcw, Save, Sparkles, Trophy } from 'lucide-react'
+import { STAGE_LABEL } from '../lib/labels'
 import { api } from '../api/client'
 import { PlayerCard } from '../components/card/PlayerCard'
 import { Button } from '../components/ui/button'
 import { PageHeader, Panel } from '../components/ui/chrome'
 import { ScoutingPanel } from '../components/match/MatchPlan'
 import { PlanEditor } from '../components/match/PlanEditor'
+import { WaitingRoom } from '../components/match/WaitingRoom'
 import { compareForm } from '../lib/ratings'
 import { bestTeam, emptyPlan, placeInSlots, planErrors, planFromDefault, samePlan, toRequest, withTeam, type MatchPlan } from '../lib/plan'
 
@@ -88,6 +90,10 @@ export function LineupPage() {
     }
   }
 
+  if (match.data?.status === 'WAITING_ROOM' || match.data?.status === 'CANCELLED') {
+    return <WaitingRoom match={match.data} />
+  }
+
   if (match.data?.status === 'MATCHING') {
     return (
       <div className="max-w-lg mx-auto text-center py-16">
@@ -112,6 +118,20 @@ export function LineupPage() {
           </div>
         }
       />
+
+      {match.data?.mode === 'tournament' && match.data.tournamentId && (
+        <Link to={`/tournaments/${match.data.tournamentId}`} className="flex items-center gap-3 rounded-2xl border border-[#ffd166]/60 bg-[#ffd166]/10 px-4 py-3 hover:bg-[#ffd166]/15">
+          <Trophy size={20} className="text-[#b7791f] dark:text-[#ffd166] shrink-0" aria-hidden />
+          <p><b>{match.data.tournamentName}</b> · {STAGE_LABEL[match.data.stage ?? ''] ?? 'Tournament'} match. No trophies or cards at stake; the result counts in the tournament. <span className="underline">View table</span></p>
+        </Link>
+      )}
+
+      {match.data?.mode === 'friendly' && (
+        <div className="flex items-center gap-3 rounded-2xl border border-[#38bdf8]/50 bg-[#38bdf8]/10 px-4 py-3">
+          <Handshake size={20} className="text-[#38bdf8] shrink-0" aria-hidden />
+          <p><b>Friendly match.</b> The result is saved to your history, but no trophies, cards or XP change hands.</p>
+        </div>
+      )}
 
       {secondsLeft != null && !youLocked && (
         <div className="flex items-center gap-3 rounded-2xl border-2 border-cta/60 bg-cta/10 px-4 py-3" role="status">

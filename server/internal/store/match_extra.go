@@ -91,7 +91,7 @@ func (s *Store) Rivalries(ctx context.Context, userID uuid.UUID, players []strin
 func (s *Store) WinStreak(ctx context.Context, userID uuid.UUID) (int, error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT winner_user_id FROM matches
-		WHERE (home_user_id=$1 OR away_user_id=$1) AND status='COMPLETE'
+		WHERE (home_user_id=$1 OR away_user_id=$1) AND status='COMPLETE' AND mode = 'ranked'
 		ORDER BY completed_at DESC NULLS LAST, created_at DESC LIMIT 50`, userID)
 	if err != nil {
 		return 0, err
@@ -119,4 +119,39 @@ func (s *Store) TransitionStatus(ctx context.Context, id uuid.UUID, from, to str
 		return false, err
 	}
 	return tag.RowsAffected() == 1, nil
+}
+
+// OpenRoomByCode finds a friendly room still waiting for a guest.
+func (s *Store) OpenRoomByCode(ctx context.Context, code string) (MatchRow, error) {
+	var m MatchRow
+	err := s.Pool.QueryRow(ctx, `SELECT `+matchCols+` FROM matches WHERE room_code=$1 AND status='WAITING_ROOM'`, code).Scan(matchDest(&m)...)
+	return m, err
+}
+
+// OpenRoomForHost returns the host's room that is still waiting for a guest, if any.
+func (s *Store) OpenRoomForHost(ctx context.Context, userID uuid.UUID) (MatchRow, error) {
+	var m MatchRow
+	err := s.Pool.QueryRow(ctx, `SELECT `+matchCols+` FROM matches
+		WHERE home_user_id=$1 AND status='WAITING_ROOM' ORDER BY created_at DESC LIMIT 1`, userID).Scan(matchDest(&m)...)
+	return m, err
+}
+
+// ClaimRoom seats the guest in a waiting room. It reports false if someone
+// else got there first or the room closed.
+func (s *Store) ClaimRoom(ctx context.Context, id, guest uuid.UUID, nextStatus string) (bool, error) {
+	tag, err := s.Pool.Exec(ctx, `UPDATE matches SET away_user_id=$2, status=$3
+		WHERE id=$1 AND status='WAITING_ROOM' AND home_user_id<>$2`, id, guest, nextStatus)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
+// JoinedRoom returns the guest's match from this room code, if they already joined it.
+func (s *Store) JoinedRoom(ctx context.Context, code string, guest uuid.UUID) (MatchRow, error) {
+	var m MatchRow
+	err := s.Pool.QueryRow(ctx, `SELECT `+matchCols+` FROM matches
+		WHERE room_code=$1 AND away_user_id=$2 AND status <> 'CANCELLED'
+		ORDER BY created_at DESC LIMIT 1`, code, guest).Scan(matchDest(&m)...)
+	return m, err
 }

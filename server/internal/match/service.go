@@ -30,6 +30,8 @@ const (
 type Service struct {
 	Store *store.Store
 	Q     *matchmaking.Queue
+	// OnComplete, if set, runs after a match finishes (tournaments advance from it).
+	OnComplete func(context.Context, store.MatchRow)
 }
 
 func (s *Service) CreateBotMatch(ctx context.Context, user store.User) (store.MatchRow, error) {

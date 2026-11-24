@@ -5,9 +5,10 @@ import { PlayerCard } from '../components/card/PlayerCard'
 import { Button } from '../components/ui/button'
 import { Panel } from '../components/ui/chrome'
 import { useState } from 'react'
-import { Award, Brain, Crown, Flame, Sparkles, Target, Trophy } from 'lucide-react'
+import { Award, Brain, Crown, Flame, Handshake, Sparkles, Target, Trophy } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { ratingBand } from '../lib/ratings'
+import { STAGE_LABEL } from '../lib/labels'
 import { RatingBadge } from '../components/card/RatingBadge'
 import { PlayerAvatar } from '../components/card/PlayerAvatar'
 import type { PlayerCard as Card } from '../types/engine'
@@ -24,6 +25,10 @@ export function ResultPage() {
   const res = m?.result
   const model = useQuery({ queryKey: ['engine-model'], queryFn: api.engineModel, staleTime: Infinity })
   if (!m || !res) return <p className="text-muted">Loading the scorecard…</p>
+  const inTournament = m.mode === 'tournament' && !!m.tournamentId
+  const tournamentLink = `/tournaments/${m.tournamentId}`
+  const tournamentName = m.tournamentName
+  const friendly = m.mode === 'friendly' || inTournament
   const youWon = m.winnerUserId === me.data?.user.id || (m.isBot && res.winner === (m.youAreHome ? 'home' : 'away'))
   const tie = res.winner === 'tie'
   const delta = m.youAreHome ? m.trophyDeltaHome : m.trophyDeltaAway
@@ -82,6 +87,15 @@ export function ResultPage() {
             <p className="mt-3 rounded-xl bg-cta/10 border border-cta/40 px-3 py-2 text-sm"><b>+{ex?.repGained?.[yourSide]} reputation</b> for {captain.name} as captain. Every 10 points adds +1 to their Tactics.</p>
           )}
         </Panel>
+        {friendly ? (
+        <Panel>
+          <h2 className="font-display text-2xl font-bold uppercase flex items-center gap-2"><Handshake size={20} className="text-[#38bdf8]" aria-hidden /> Friendly</h2>
+          <p className="text-muted mt-1">
+            {inTournament ? <>This result counts in <Link to={tournamentLink} className="underline font-semibold">{tournamentName}</Link>. </> : 'Played for bragging rights. '}
+            The result is saved to both histories; trophies, cards, XP, captain reputation and streaks are unchanged.
+          </p>
+        </Panel>
+        ) : (
         <Panel>
           <h2 className="font-display text-2xl font-bold uppercase flex items-center gap-2"><Flame size={20} className="text-cta" aria-hidden /> Streak</h2>
           {youWon && ex?.streak?.[yourSide] ? (
@@ -95,6 +109,7 @@ export function ResultPage() {
             <p className="text-muted mt-1">{tie ? 'A tie keeps nothing going.' : 'Streak reset.'} Win 2 in a row for bonus trophies; 3 in a row also boosts your reward cards.</p>
           )}
         </Panel>
+        )}
       </section>
     )
   }
@@ -102,7 +117,11 @@ export function ResultPage() {
   async function again() {
     setBusy(true)
     try {
-      const next = await api.createMatch('bot')
+      if (inTournament) {
+        nav(tournamentLink)
+        return
+      }
+      const next = friendly ? await api.createRoom() : await api.createMatch('bot')
       nav(`/match/${next.id}/lineup`)
     } finally {
       setBusy(false)
@@ -113,15 +132,21 @@ export function ResultPage() {
     <div className="space-y-6">
       <section className={cn('relative overflow-hidden rounded-3xl px-5 py-8 sm:py-10 text-center text-white fade-up', tie ? 'bg-[linear-gradient(160deg,#334155,#0f172a)]' : youWon ? 'hero-stadium' : 'bg-[radial-gradient(ellipse_at_top,rgba(255,107,107,0.35),transparent_60%),linear-gradient(160deg,#3b0d12,#12060a)]')}>
         <div className="relative z-10">
-          <p className="text-xs font-bold uppercase tracking-[0.25em] text-white/70">{m.isBot ? 'Quick match' : 'Versus player'} · vs {m.opponent.name}</p>
+          <p className="text-xs font-bold uppercase tracking-[0.25em] text-white/70">{inTournament ? `${m.tournamentName} · ${STAGE_LABEL[m.stage ?? ''] ?? 'Tournament'}` : friendly ? 'Friendly' : m.isBot ? 'Quick match' : 'Versus player'} · vs {m.opponent.name}</p>
           <h1 className={cn('font-display text-6xl sm:text-8xl font-bold uppercase leading-none mt-2', youWon && 'text-[#ffd166] text-glow')}>
             {tie ? 'Tied!' : youWon ? 'Victory!' : 'Defeat'}
           </h1>
           <p className="font-display text-2xl sm:text-3xl font-semibold mt-2">{tie ? 'Scores level after 5 overs' : `${winnerName} ${res.margin}`}</p>
+          {friendly ? (
+            <div className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 mt-4 font-display text-xl font-bold bg-white/10">
+              {inTournament ? <Trophy size={20} aria-hidden /> : <Handshake size={20} aria-hidden />} {inTournament ? 'Tournament' : 'Friendly'} · no trophies
+            </div>
+          ) : (
           <div className={cn('inline-flex items-center gap-2 rounded-full px-4 py-1.5 mt-4 font-display text-2xl font-bold', (delta ?? 0) > 0 ? 'bg-[#ffd166] text-[#1a1205]' : (delta ?? 0) < 0 ? 'bg-white/15' : 'bg-white/10')}>
             <Trophy size={20} aria-hidden /> {(delta ?? 0) > 0 ? `+${delta}` : (delta ?? 0) < 0 ? `${delta}` : '±0'}
             <span className="sr-only">{trophy}</span>
           </div>
+          )}
           <div className="grid grid-cols-2 gap-3 max-w-md mx-auto mt-6">
             {res.innings.map((inn, i) => (
               <div key={i} className="rounded-2xl bg-black/25 border border-white/10 px-3 py-3">
@@ -132,7 +157,7 @@ export function ResultPage() {
             ))}
           </div>
           <div className="flex flex-wrap justify-center gap-3 mt-6">
-            <Button className="min-h-13 px-7 text-xl" disabled={busy} onClick={again}>{busy ? 'Starting…' : youWon ? 'Keep the streak going' : 'Rematch'}</Button>
+            <Button className="min-h-13 px-7 text-xl" disabled={busy} onClick={again}>{busy ? 'Starting…' : inTournament ? 'Back to tournament' : friendly ? 'New room' : youWon ? 'Keep the streak going' : 'Rematch'}</Button>
             <Button variant="outline" className="!bg-white/10 !border-white/25 text-white" onClick={() => nav(`/match/${id}/live`)}>Watch replay</Button>
             <Button variant="ghost" className="text-white hover:!bg-white/10" onClick={() => nav('/')}>Home</Button>
           </div>
@@ -166,7 +191,7 @@ export function ResultPage() {
       {m.ratings && (
         <section>
           <h2 className="font-display text-3xl font-bold uppercase mb-1">Player ratings</h2>
-          <p className="text-muted mb-3">Every player is rated from 3.0 to 10.0 on this match. Your cards also earned XP: a little for playing, more for a strong rating{m.xpEarned && !youWon ? ', plus the consolation XP for a loss or tie' : ''}. <Link to="/engine#ratings" className="underline">How ratings work</Link></p>
+          <p className="text-muted mb-3">Every player is rated from 3.0 to 10.0 on this match. {friendly ? 'Friendlies don’t award XP.' : <>Your cards also earned XP: a little for playing, more for a strong rating{m.xpEarned && !youWon ? ', plus the consolation XP for a loss or tie' : ''}.</>} <Link to="/engine#ratings" className="underline">How ratings work</Link></p>
           <div className="grid md:grid-cols-2 gap-4">
             {([['home', m.homeLineup?.cards ?? []], ['away', m.awayLineup?.cards ?? []]] as const).map(([side, teamCards]) => {
               const mine = (side === 'home') === m.youAreHome

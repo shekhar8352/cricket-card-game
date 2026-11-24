@@ -7,13 +7,15 @@ import { PlayerCard } from '../components/card/PlayerCard'
 import { matchPath, statusLabel } from '../lib/labels'
 import { useUI } from '../store/ui'
 import { useState } from 'react'
-import { Flame, ListOrdered, Play, Swords, Trophy, Users } from 'lucide-react'
+import { Flame, Handshake, ListOrdered, Play, Swords, Trophy, Users } from 'lucide-react'
 
 export function HomePage() {
   const nav = useNavigate()
   const me = useQuery({ queryKey: ['me'], queryFn: api.me })
   const cards = useQuery({ queryKey: ['cards'], queryFn: api.cards })
   const hist = useQuery({ queryKey: ['matches'], queryFn: api.matches })
+  const tours = useQuery({ queryKey: ['tournaments'], queryFn: api.tournaments })
+  const tourToPlay = (tours.data ?? []).filter((t) => t.yourOpenMatches > 0 || t.status === 'LOBBY')
   const starter = useUI((s) => s.starter)
   const setStarter = useUI((s) => s.setStarter)
   const [flipped, setFlipped] = useState<Record<number, boolean>>({})
@@ -25,7 +27,8 @@ export function HomePage() {
   const progress = user ? Math.min(100, ((user.trophies - prevMin) / Math.max(1, nextMin - prevMin)) * 100) : 0
   const best = (cards.data ?? []).slice().sort((a, b) => b.overall - a.overall).slice(0, 5)
   const recent = (hist.data ?? []).slice(0, 5)
-  const done = (hist.data ?? []).filter((m) => m.status === 'COMPLETE')
+  // Friendlies stay out of the record, like they do for trophies and streaks.
+  const done = (hist.data ?? []).filter((m) => m.status === 'COMPLETE' && (!m.mode || m.mode === 'ranked'))
   const played = done.length
   const wins = done.filter((m) => m.winnerUserId === user?.id).length
   const streak = me.data?.streak
@@ -81,6 +84,9 @@ export function HomePage() {
                 <Swords size={20} aria-hidden />
                 {busy === 'pvp' ? 'Searching…' : 'Versus player'}
               </Button>
+              <Button variant="outline" className="min-h-14 px-5 text-lg !bg-white/10 !border-white/25 text-white" disabled={!!busy} onClick={() => nav('/play#friendly')}>
+                <Handshake size={20} aria-hidden /> Play friends
+              </Button>
             </div>
             {err && <p className="text-[#ffb4b4] mt-3" role="alert">{err}</p>}
           </div>
@@ -120,6 +126,18 @@ export function HomePage() {
           <p className="text-sm text-muted">{statusLabel(paused[0].status)}. Tap to continue.</p>
         </button>
       )}
+
+      {tourToPlay.map((t) => (
+        <button key={t.id} type="button" onClick={() => nav(`/tournaments/${t.id}`)} className="w-full text-left rounded-2xl border-2 border-[#ffd166]/70 bg-[#ffd166]/10 px-4 py-3 cursor-pointer game-tile flex items-center gap-3">
+          <Trophy size={24} className="text-[#b7791f] dark:text-[#ffd166] shrink-0" aria-hidden />
+          <span className="min-w-0">
+            <span className="block font-display text-xl font-bold truncate">{t.name}</span>
+            <span className="block text-sm text-muted">
+              {t.status === 'LOBBY' ? `Waiting for players (${t.players} in). Tap to open the lobby.` : `${t.yourOpenMatches} match${t.yourOpenMatches === 1 ? '' : 'es'} for you to play. Tap to open.`}
+            </span>
+          </span>
+        </button>
+      ))}
 
       {streak && streak.current > 0 && (
         <section className="flex flex-wrap items-center gap-4 rounded-2xl border border-cta/50 bg-gradient-to-r from-cta/15 to-transparent px-4 py-3">
@@ -196,6 +214,8 @@ export function HomePage() {
                         </span>
                       )}
                       vs {m.opponent.name}
+                      {m.mode === 'friendly' && <span className="rounded bg-[#38bdf8]/15 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-[#0284c7] dark:text-[#7dd3fc] align-middle">Friendly</span>}
+                      {m.mode === 'tournament' && <span className="rounded bg-[#ffd166]/20 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-[#b7791f] dark:text-[#ffd166] align-middle">{m.tournamentName ?? 'Tournament'}</span>}
                     </span>
                     <span className={outcome === 'win' && m.status === 'COMPLETE' ? 'text-success font-semibold' : outcome === 'loss' && m.status === 'COMPLETE' ? 'text-wicket font-semibold' : 'text-muted'}>{label}</span>
                   </div>

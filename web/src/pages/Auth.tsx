@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { api, setToken } from '../api/client'
 import { Button } from '../components/ui/button'
 import { Brand, controlClass } from '../components/ui/chrome'
@@ -22,6 +22,8 @@ export function AuthPage() {
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const nav = useNavigate()
+  const from = (useLocation().state as { from?: string } | null)?.from
+  const next = from && from.startsWith('/') && !from.startsWith('//') ? from : '/'
   const setStarter = useUI((s) => s.setStarter)
 
   async function submit(e: React.FormEvent) {
@@ -33,11 +35,11 @@ export function AuthPage() {
         const r = await api.register(username, password)
         setToken(r.token)
         setStarter(r.starterPack)
-        nav('/')
+        nav(next)
       } else {
         const r = await api.login(username, password)
         setToken(r.token)
-        nav('/')
+        nav(next)
       }
     } catch (e) {
       setErr((e as Error).message)

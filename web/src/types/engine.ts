@@ -209,7 +209,16 @@ export interface MatchDTO {
   id: string
   status: string
   isBot: boolean
-  opponent: { name: string; trophies: number }
+  /** "friendly" (rooms) and "tournament" matches award no trophies, cards or XP. */
+  mode?: 'ranked' | 'friendly' | 'tournament'
+  /** Tournament matches: which tournament, and the stage (league, qualifier1, eliminator, qualifier2, final). */
+  tournamentId?: string
+  tournamentName?: string
+  stage?: string
+  /** While a friendly room waits for a guest: the code to share and when it closes. */
+  roomCode?: string
+  roomExpiresAt?: string
+  opponent: { name: string; trophies: number | null }
   homeLineup?: LineupDTO
   awayLineup?: LineupDTO
   pitch?: PitchDef
@@ -512,4 +521,93 @@ export interface OddsResult {
   runsPerBall: number
   wicketChance: number
   matchup?: string
+}
+
+export interface TournamentUser {
+  userId: string
+  username: string
+}
+
+export interface TournamentRow {
+  userId: string
+  username: string
+  played: number
+  won: number
+  lost: number
+  tied: number
+  points: number
+  nrr: number
+  position: number
+}
+
+export interface TournamentFixture {
+  id: string
+  stage: string
+  label: string
+  status: string
+  home: TournamentUser
+  away?: TournamentUser
+  /** "home", "away", or "" when you're not playing in it. */
+  yourSide: string
+  score?: Record<string, string>
+  margin?: string
+  winnerUserId?: string
+  /** A knockout still tied after the Super Over: the higher league finisher went through. */
+  wonOnTable?: boolean
+}
+
+export interface TournamentAward {
+  code: string
+  title: string
+  blurb: string
+  userId: string
+  username: string
+  cardId?: string
+  cardName?: string
+  playerId?: string
+  rarity?: string
+  role?: string
+  value: string
+  detail?: string
+}
+
+export interface Tournament {
+  id: string
+  name: string
+  code: string
+  status: 'LOBBY' | 'LEAGUE' | 'PLAYOFFS' | 'COMPLETE' | 'CANCELLED'
+  format: 'final' | 'playoffs'
+  hostUserId: string
+  youAreHost: boolean
+  youAreIn: boolean
+  createdAt: string
+  startedAt?: string | null
+  completedAt?: string | null
+  players: (TournamentUser & { trophies: number })[]
+  minPlayers: number
+  maxPlayers: number
+  playoffsFrom: number
+  qualifiers: number
+  table: TournamentRow[]
+  leagueDone: boolean
+  matches: TournamentFixture[]
+  pointsWin: number
+  pointsTie: number
+  honours?: {
+    champion: TournamentUser
+    runnerUp: TournamentUser
+    placings: TournamentUser[]
+    awards: TournamentAward[]
+  }
+}
+
+export interface TournamentSummary {
+  id: string
+  name: string
+  status: Tournament['status']
+  format?: Tournament['format'] | null
+  players: number
+  createdAt: string
+  yourOpenMatches: number
+  youAreHost: boolean
 }

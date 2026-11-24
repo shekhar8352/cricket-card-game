@@ -21,6 +21,7 @@ import (
 	"github.com/sudhanshushekhar/cricket-card-game/internal/match"
 	"github.com/sudhanshushekhar/cricket-card-game/internal/matchmaking"
 	"github.com/sudhanshushekhar/cricket-card-game/internal/store"
+	"github.com/sudhanshushekhar/cricket-card-game/internal/tournament"
 	"github.com/sudhanshushekhar/cricket-card-game/internal/trophy"
 	"golang.org/x/crypto/bcrypt"
 	"nhooyr.io/websocket"
@@ -29,17 +30,22 @@ import (
 type Server struct {
 	Store  *store.Store
 	Match  *match.Service
+	Tour   *tournament.Service
 	Q      *matchmaking.Queue
 	Redis  *redis.Client
 	Secret []byte
 }
 
 func New(s *store.Store, q *matchmaking.Queue, rdb *redis.Client, secret string) *Server {
+	ms := &match.Service{Store: s, Q: q}
+	ts := &tournament.Service{Store: s, Match: ms}
+	ms.OnComplete = ts.OnMatchComplete
 	return &Server{
-		Store: s,
-		Match: &match.Service{Store: s, Q: q},
-		Q:     q,
-		Redis: rdb,
+		Store:  s,
+		Match:  ms,
+		Tour:   ts,
+		Q:      q,
+		Redis:  rdb,
 		Secret: []byte(secret),
 	}
 }
@@ -82,6 +88,16 @@ func (s *Server) Router() http.Handler {
 		r.Post("/matches/{id}/break", s.submitBreak)
 		r.Post("/matches/{id}/superover", s.submitSuperOver)
 		r.Get("/matches/{id}/scorecard", s.scorecard)
+		r.Post("/rooms", s.createRoom)
+		r.Post("/rooms/join", s.joinRoom)
+		r.Post("/rooms/{id}/cancel", s.cancelRoom)
+		r.Post("/join", s.joinAny)
+		r.Get("/tournaments", s.myTournaments)
+		r.Post("/tournaments", s.createTournament)
+		r.Get("/tournaments/{id}", s.getTournament)
+		r.Post("/tournaments/{id}/start", s.startTournament)
+		r.Post("/tournaments/{id}/leave", s.leaveTournament)
+		r.Post("/tournaments/{id}/autoplay", s.autoplayTournament)
 		r.Get("/leaderboard", s.leaderboard)
 		r.Get("/users/{id}", s.userProfile)
 		r.Get("/traits", s.traits)
@@ -338,6 +354,9 @@ func (s *Server) getMatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u := userFrom(r)
+	if m.Status == match.StatusWaitingRoom && s.Match.ExpireRoom(r.Context(), m) {
+		m, _ = s.Store.MatchByID(r.Context(), id)
+	}
 	if m.Status == match.StatusMatching {
 		m, _ = s.Match.FallbackBotIfNeeded(r.Context(), m, u)
 	}
@@ -572,6 +591,21 @@ func (s *Server) matchDTO(ctx context.Context, m store.MatchRow, viewer store.Us
 		"lineupDeadline": match.LineupDeadline(m, lus, viewer.ID),
 		"xpEarned": s.matchXP(ctx, m.ID, viewer.ID),
 		"homeUserId": m.HomeUserID,
+		"mode":       m.Mode,
+	}
+	if m.TournamentID != nil {
+		dto["tournamentId"] = m.TournamentID
+		if m.Stage != nil {
+			dto["stage"] = *m.Stage
+		}
+		if t, err := s.Store.TournamentByID(ctx, *m.TournamentID); err == nil {
+			dto["tournamentName"] = t.Name
+		}
+	}
+	if m.Status == match.StatusWaitingRoom && m.RoomCode != nil {
+		dto["roomCode"] = *m.RoomCode
+		dto["roomExpiresAt"] = m.CreatedAt.Add(match.RoomTTL)
+		dto["opponent"] = map[string]any{"name": "Waiting for a friend", "trophies": nil}
 	}
 	if m.AwayUserID != nil {
 		dto["awayUserId"] = m.AwayUserID
