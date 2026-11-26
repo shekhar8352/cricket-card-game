@@ -41,6 +41,27 @@ type ResultExtras struct {
 	Reads       map[string]int  `json:"reads,omitempty"`       // side -> overs the captain read correctly
 	RepGained   map[string]int  `json:"repGained,omitempty"`   // side -> captain reputation gained
 	Boosted     map[string]bool `json:"boosted,omitempty"`     // side -> streak-boosted reward roll
+	// Ranked matches only: each side's rank before and after, and what changed.
+	RankBefore map[string]trophy.Rank `json:"rankBefore,omitempty"`
+	RankAfter  map[string]trophy.Rank `json:"rankAfter,omitempty"`
+	RankMove   map[string]string      `json:"rankMove,omitempty"`  // side -> "up", "down", "protected" or "" (same)
+	NewBest    map[string]bool        `json:"newBest,omitempty"`   // side -> beat their personal best
+	NewArenas  map[string][]string    `json:"newArenas,omitempty"` // side -> arenas reached for the first time (milestone cards)
+}
+
+// rankMove describes how a rank changed: "up", "down", "protected" (still in
+// the arena thanks to the buffer) or "".
+func rankMove(before, after trophy.Rank) string {
+	switch trophy.Compare(after, before) {
+	case 1:
+		return "up"
+	case -1:
+		return "down"
+	}
+	if after.Protected && after.Trophies < before.Trophies {
+		return "protected"
+	}
+	return ""
 }
 
 type storedResult struct {
@@ -412,7 +433,9 @@ func (s *Service) finishMatch(ctx context.Context, m store.MatchRow, res engine.
 		oppTrophies = awayU.Trophies
 	}
 
-	ex := ResultExtras{Streak: map[string]int{}, StreakBonus: map[string]int{}, Reads: map[string]int{}, RepGained: map[string]int{}, Boosted: map[string]bool{}}
+	ex := ResultExtras{Streak: map[string]int{}, StreakBonus: map[string]int{}, Reads: map[string]int{}, RepGained: map[string]int{}, Boosted: map[string]bool{},
+		RankBefore: map[string]trophy.Rank{}, RankAfter: map[string]trophy.Rank{}, RankMove: map[string]string{},
+		NewBest: map[string]bool{}, NewArenas: map[string][]string{}}
 	won := map[string]bool{"home": res.Winner == "home", "away": res.Winner == "away"}
 	// Streaks are counted before this match is marked complete.
 	settle := func(side string, u store.User, opp int) int {
@@ -449,6 +472,47 @@ func (s *Service) finishMatch(ctx context.Context, m store.MatchRow, res engine.
 		}
 	}
 
+	// Trophies and ranks are applied under a row lock per player, so two results
+	// landing together can't overwrite each other or both pay a milestone.
+	// Promotion is immediate; demotion waits for the 100-trophy buffer; arenas
+	// reached for the first time (above the personal best) earn a milestone card.
+	milestones := map[string][]trophy.Arena{}
+	applied := map[string]int{"home": hd, "away": ad}
+	apply := func(side string, u store.User, delta int) error {
+		before, after, err := s.Store.ApplyTrophies(ctx, u.ID, delta, func(arena string, t int) string { return trophy.Resolve(arena, t).Name })
+		if err != nil {
+			return err
+		}
+		applied[side] = after.Trophies - before.Trophies // the real change, after the floor at 0
+		rb, ra := trophy.RankOf(before.Arena, before.Trophies), trophy.RankOf(after.Arena, after.Trophies)
+		ex.RankBefore[side], ex.RankAfter[side] = rb, ra
+		ex.RankMove[side] = rankMove(rb, ra)
+		ex.NewBest[side] = after.BestTrophies > before.BestTrophies
+		milestones[side] = trophy.NewArenasReached(before.BestTrophies, after.Trophies)
+		for _, a := range milestones[side] {
+			ex.NewArenas[side] = append(ex.NewArenas[side], a.Name)
+		}
+		if s.Q != nil {
+			_ = s.Q.SetScore(ctx, u.ID, after.Trophies)
+		}
+		return nil
+	}
+	if !friendly {
+		// A failed trophy update is logged, not fatal: the match still finishes
+		// rather than sticking mid-simulation.
+		if err := apply("home", homeU, hd); err != nil {
+			log.Printf("match %s: home trophies: %v", m.ID, err)
+			applied["home"] = 0
+		}
+		if awayU != nil {
+			if err := apply("away", *awayU, ad); err != nil {
+				log.Printf("match %s: away trophies: %v", m.ID, err)
+				applied["away"] = 0
+			}
+		}
+		hd, ad = applied["home"], applied["away"]
+	}
+
 	var winner *uuid.UUID
 	if won["home"] {
 		winner = &homeU.ID
@@ -474,19 +538,6 @@ func (s *Service) finishMatch(ctx context.Context, m store.MatchRow, res engine.
 		return nil
 	}
 
-	ht := trophy.Apply(homeU.Trophies, hd)
-	_ = s.Store.UpdateTrophies(ctx, homeU.ID, ht, trophy.ArenaFor(ht).Name)
-	if s.Q != nil {
-		_ = s.Q.SetScore(ctx, homeU.ID, ht)
-	}
-	if awayU != nil {
-		at := trophy.Apply(awayU.Trophies, ad)
-		_ = s.Store.UpdateTrophies(ctx, awayU.ID, at, trophy.ArenaFor(at).Name)
-		if s.Q != nil {
-			_ = s.Q.SetScore(ctx, awayU.ID, at)
-		}
-	}
-
 	ratings := engine.PlayerRatings(res)
 	humans := []struct {
 		side string
@@ -505,7 +556,7 @@ func (s *Service) finishMatch(ctx context.Context, m store.MatchRow, res engine.
 			log.Printf("match %s: %s XP: %v", m.ID, h.side, err)
 		}
 		if won[h.side] {
-			if err := s.grantRewards(ctx, h.user, m.ID, ex.Boosted[h.side]); err != nil {
+			if err := s.grantRewards(ctx, h.user, m.ID, ex.Boosted[h.side], milestones[h.side]); err != nil {
 				log.Printf("match %s: %s rewards: %v", m.ID, h.side, err)
 			}
 		}
