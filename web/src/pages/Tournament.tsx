@@ -1,3 +1,4 @@
+import { MobileTabs } from '../components/ui/MobileTabs'
 import { useState, type ComponentType } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -63,13 +64,7 @@ export function TournamentPage() {
         <Lobby t={t} />
       ) : (
         <>
-          {t.honours && <Ceremony t={t} />}
-          {t.status !== 'COMPLETE' && <YourMatches t={t} />}
-          <div className="grid xl:grid-cols-[1.2fr_1fr] gap-4 items-start">
-            <PointsTable t={t} />
-            <Knockouts t={t} />
-          </div>
-          <LeagueFixtures t={t} />
+          <TournamentBody t={t} />
         </>
       )}
     </div>
@@ -452,5 +447,36 @@ function AwardCard({ a }: { a: TournamentAward }) {
         {a.cardName && <p className="text-[11px] text-muted mt-0.5">{a.blurb}</p>}
       </div>
     </Panel>
+  )
+}
+
+/** Started tournaments: everything on desktop, one tab at a time on phones. */
+function TournamentBody({ t }: { t: Tournament }) {
+  const [tab, setTab] = useState<'overview' | 'table' | 'playoffs' | 'fixtures'>('overview')
+  const only = (k: typeof tab) => (tab === k ? '' : 'hidden lg:block')
+  const mine = t.matches.filter((f) => f.yourSide && f.status !== 'COMPLETE').length
+  return (
+    <>
+      <MobileTabs
+        label="Tournament"
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { key: 'overview', label: t.honours ? 'Awards' : 'Your matches', badge: mine || null },
+          { key: 'table', label: 'Table' },
+          { key: 'playoffs', label: t.format === 'playoffs' ? 'Playoffs' : 'Final' },
+          { key: 'fixtures', label: 'Fixtures' },
+        ]}
+      />
+      <div className={cn('space-y-6', only('overview'))}>
+        {t.honours && <Ceremony t={t} />}
+        {t.status !== 'COMPLETE' && <YourMatches t={t} />}
+      </div>
+      <div className={cn('grid xl:grid-cols-[1.2fr_1fr] gap-4 items-start', tab !== 'table' && tab !== 'playoffs' && 'hidden lg:grid')}>
+        <div className={cn('min-w-0', only('table'))}><PointsTable t={t} /></div>
+        <div className={cn('min-w-0', only('playoffs'))}><Knockouts t={t} /></div>
+      </div>
+      <div className={only('fixtures')}><LeagueFixtures t={t} /></div>
+    </>
   )
 }

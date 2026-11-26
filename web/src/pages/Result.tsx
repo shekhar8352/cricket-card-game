@@ -13,6 +13,7 @@ import { RatingBadge } from '../components/card/RatingBadge'
 import { PlayerAvatar } from '../components/card/PlayerAvatar'
 import type { PlayerCard as Card, ResultExtras } from '../types/engine'
 import { ArenaBadge } from '../components/trophy/ArenaBadge'
+import { MobileTabs } from '../components/ui/MobileTabs'
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
 export function ResultPage() {
@@ -22,6 +23,7 @@ export function ResultPage() {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me })
   const [flip, setFlip] = useState<Record<number, boolean>>({})
   const [busy, setBusy] = useState(false)
+  const [tab, setTab] = useState<'summary' | 'ratings' | 'scorecard' | 'charts'>('summary')
   const m = match.data
   const res = m?.result
   const model = useQuery({ queryKey: ['engine-model'], queryFn: api.engineModel, staleTime: Infinity })
@@ -129,15 +131,16 @@ export function ResultPage() {
     }
   }
 
+  const only = (k: typeof tab) => (tab === k ? '' : 'hidden lg:block')
   return (
-    <div className="space-y-6">
-      <section className={cn('relative overflow-hidden rounded-3xl px-5 py-8 sm:py-10 text-center text-white fade-up', tie ? 'bg-[linear-gradient(160deg,#334155,#0f172a)]' : youWon ? 'hero-stadium' : 'bg-[radial-gradient(ellipse_at_top,rgba(255,107,107,0.35),transparent_60%),linear-gradient(160deg,#3b0d12,#12060a)]')}>
+    <div className="space-y-4 lg:space-y-6">
+      <section className={cn('relative overflow-hidden rounded-3xl px-4 sm:px-5 py-5 sm:py-10 text-center text-white fade-up', tie ? 'bg-[linear-gradient(160deg,#334155,#0f172a)]' : youWon ? 'hero-stadium' : 'bg-[radial-gradient(ellipse_at_top,rgba(255,107,107,0.35),transparent_60%),linear-gradient(160deg,#3b0d12,#12060a)]')}>
         <div className="relative z-10">
           <p className="text-xs font-bold uppercase tracking-[0.25em] text-white/70">{inTournament ? `${m.tournamentName} · ${STAGE_LABEL[m.stage ?? ''] ?? 'Tournament'}` : friendly ? 'Friendly' : m.isBot ? 'Quick match' : 'Versus player'} · vs {m.opponent.name}</p>
-          <h1 className={cn('font-display text-6xl sm:text-8xl font-bold uppercase leading-none mt-2', youWon && 'text-[#ffd166] text-glow')}>
+          <h1 className={cn('font-display text-5xl sm:text-8xl font-bold uppercase leading-none mt-2', youWon && 'text-[#ffd166] text-glow')}>
             {tie ? 'Tied!' : youWon ? 'Victory!' : 'Defeat'}
           </h1>
-          <p className="font-display text-2xl sm:text-3xl font-semibold mt-2">{tie ? 'Scores level after 5 overs' : `${winnerName} ${res.margin}`}</p>
+          <p className="font-display text-xl sm:text-3xl font-semibold mt-1 sm:mt-2">{tie ? 'Scores level after 5 overs' : `${winnerName} ${res.margin}`}</p>
           {friendly ? (
             <div className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 mt-4 font-display text-xl font-bold bg-white/10">
               {inTournament ? <Trophy size={20} aria-hidden /> : <Handshake size={20} aria-hidden />} {inTournament ? 'Tournament' : 'Friendly'} · no trophies
@@ -149,23 +152,49 @@ export function ResultPage() {
           </div>
           )}
           {!friendly && <RankChange ex={ex} side={yourSide} />}
-          <div className="grid grid-cols-2 gap-3 max-w-md mx-auto mt-6">
+          <div className="grid grid-cols-2 gap-2 sm:gap-3 max-w-md mx-auto mt-4 sm:mt-6">
             {res.innings.map((inn, i) => (
-              <div key={i} className="rounded-2xl bg-black/25 border border-white/10 px-3 py-3">
+              <div key={i} className="rounded-2xl bg-black/25 border border-white/10 px-3 py-2 sm:py-3">
                 <p className="text-xs font-semibold uppercase tracking-wider text-white/60 truncate">{sideName(inn.battingSide)}</p>
-                <p className="font-display text-4xl font-bold tabular leading-none mt-1">{inn.runs}/{inn.wickets}</p>
+                <p className="font-display text-3xl sm:text-4xl font-bold tabular leading-none mt-1">{inn.runs}/{inn.wickets}</p>
                 <p className="text-sm text-white/60 tabular">{Math.floor(inn.balls / 6)}.{inn.balls % 6} overs</p>
               </div>
             ))}
           </div>
-          <div className="flex flex-wrap justify-center gap-3 mt-6">
-            <Button className="min-h-13 px-7 text-xl" disabled={busy} onClick={again}>{busy ? 'Starting…' : inTournament ? 'Back to tournament' : friendly ? 'New room' : youWon ? 'Keep the streak going' : 'Rematch'}</Button>
+          <div className="flex flex-wrap justify-center gap-2 sm:gap-3 mt-4 sm:mt-6">
+            <Button className="w-full sm:w-auto min-h-12 sm:min-h-13 px-7 text-xl" disabled={busy} onClick={again}>{busy ? 'Starting…' : inTournament ? 'Back to tournament' : friendly ? 'New room' : youWon ? 'Keep the streak going' : 'Rematch'}</Button>
             <Button variant="outline" className="!bg-white/10 !border-white/25 text-white" onClick={() => nav(`/match/${id}/live`)}>Watch replay</Button>
             <Button variant="ghost" className="text-white hover:!bg-white/10" onClick={() => nav('/')}>Home</Button>
           </div>
         </div>
       </section>
 
+      {m.rewards && m.rewards.length > 0 && (
+        <section>
+          <h2 className="font-display text-2xl sm:text-3xl font-bold uppercase mb-1">New cards <span className="text-cta">unlocked!</span></h2>
+          <p className="text-muted mb-3 text-sm sm:text-base">Tap a card to reveal it, then train it if you want it to level up.</p>
+          <div className="felt-tray chip-scroll flex gap-3 sm:gap-4 overflow-x-auto sm:flex-wrap">
+            {m.rewards.map((c, i) => (
+              <PlayerCard key={c.id} card={c} hidden={!flip[i]} placeholder="Tap to reveal" onClick={() => setFlip((f) => ({ ...f, [i]: true }))} />
+            ))}
+          </div>
+          <Button className="mt-4" variant="outline" onClick={() => nav('/training')}>Train a player</Button>
+        </section>
+      )}
+
+      <MobileTabs
+        label="Match report"
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { key: 'summary', label: 'Summary' },
+          { key: 'ratings', label: 'Ratings' },
+          { key: 'scorecard', label: 'Scorecard' },
+          { key: 'charts', label: 'Charts' },
+        ]}
+      />
+
+      <div className={cn('space-y-4 lg:space-y-6', only('summary'))}>
       {captaincyReport()}
 
       {res.superOver && (
@@ -189,9 +218,10 @@ export function ResultPage() {
         {topBat && <Performer label="Top scorer" Icon={Flame} card={cardOf(topBat.cardId)} line={`${topBat.runs} (${topBat.balls}) · ${topBat.fours}×4 ${topBat.sixes}×6`} />}
         {topBowl && <Performer label="Best bowling" Icon={Target} card={cardOf(topBowl.cardId)} line={`${topBowl.wickets}/${topBowl.runs} (${Math.floor(topBowl.balls / 6)}.${topBowl.balls % 6})`} />}
       </section>
+      </div>
 
       {m.ratings && (
-        <section>
+        <section className={only('ratings')}>
           <h2 className="font-display text-3xl font-bold uppercase mb-1">Player ratings</h2>
           <p className="text-muted mb-3">Every player is rated from 3.0 to 10.0 on this match. {friendly ? 'Friendlies don’t award XP.' : <>Your cards also earned XP: a little for playing, more for a strong rating{m.xpEarned && !youWon ? ', plus the consolation XP for a loss or tie' : ''}.</>} <Link to="/engine#ratings" className="underline">How ratings work</Link></p>
           <div className="grid md:grid-cols-2 gap-4">
@@ -221,25 +251,13 @@ export function ResultPage() {
         </section>
       )}
 
-      {m.rewards && m.rewards.length > 0 && (
-        <section>
-          <h2 className="font-display text-3xl font-bold uppercase mb-1">New cards <span className="text-cta">unlocked!</span></h2>
-          <p className="text-muted mb-3">Tap a card to reveal it, then train it if you want it to level up.</p>
-          <div className="felt-tray flex flex-wrap gap-4">
-            {m.rewards.map((c, i) => (
-              <PlayerCard key={c.id} card={c} hidden={!flip[i]} placeholder="Tap to reveal" onClick={() => setFlip((f) => ({ ...f, [i]: true }))} />
-            ))}
-          </div>
-          <Button className="mt-4" variant="outline" onClick={() => nav('/training')}>Train a player</Button>
-        </section>
-      )}
-
+      <div className={cn('space-y-4 lg:space-y-6', only('scorecard'))}>
       {res.innings.map((inn, i) => (
         <Panel key={i} className="overflow-x-auto">
           <h2 className="font-display text-2xl font-semibold mb-3">
             {sideName(inn.battingSide)} · {inn.runs}/{inn.wickets} <span className="text-muted text-lg">({Math.floor(inn.balls / 6)}.{inn.balls % 6} ov)</span>
           </h2>
-          <table className="w-full text-base">
+          <table className="w-full text-sm sm:text-base">
             <caption className="sr-only">Batting</caption>
             <thead><tr className="text-muted text-left"><th scope="col" className="py-2">Batter</th><th scope="col">Runs</th><th scope="col">Balls</th><th scope="col">Fours</th><th scope="col">Sixes</th><th scope="col">How out</th></tr></thead>
             <tbody>
@@ -256,7 +274,7 @@ export function ResultPage() {
             </tbody>
           </table>
           <p className="text-sm text-muted mt-2">Extras: {inn.byes} byes, {inn.wides} wides, {inn.noBalls} no-balls</p>
-          <table className="w-full text-base mt-4">
+          <table className="w-full text-sm sm:text-base mt-4">
             <caption className="sr-only">Bowling</caption>
             <thead><tr className="text-muted text-left"><th scope="col" className="py-2">Bowler</th><th scope="col">Overs</th><th scope="col">Runs</th><th scope="col">Wickets</th></tr></thead>
             <tbody>
@@ -270,7 +288,7 @@ export function ResultPage() {
               ))}
             </tbody>
           </table>
-          <table className="w-full text-base mt-4">
+          <table className="w-full text-sm sm:text-base mt-4">
             <caption className="sr-only">Fielding</caption>
             <thead><tr className="text-muted text-left"><th scope="col" className="py-2">Fielder</th><th scope="col">Catches</th><th scope="col">Stumpings</th><th scope="col">Run outs</th><th scope="col">Drops</th><th scope="col">Runs saved</th></tr></thead>
             <tbody>
@@ -284,8 +302,9 @@ export function ResultPage() {
           </table>
         </Panel>
       ))}
+      </div>
 
-      <div className="grid lg:grid-cols-2 gap-4">
+      <div className={cn('grid lg:grid-cols-2 gap-4', tab !== 'charts' && 'hidden lg:grid')}>
         <Panel>
           <h2 className="font-display text-2xl font-semibold mb-2">Run comparison</h2>
           <p className="text-sm text-muted mb-2">{sideName(res.innings[0].battingSide)} in green, {sideName(res.innings[1].battingSide)} in orange.</p>

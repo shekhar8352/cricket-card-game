@@ -110,7 +110,7 @@ export function TrainingPage() {
           {all.length === 0 && !cards.isPending ? (
             <EmptyState title="No cards to train" body="Earn cards from matches, then come back to level them up." />
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
               {all.slice().sort((a, b) => b.overall - a.overall).map((c) => (
                 <PlayerCard key={c.id} card={c} className="w-full max-w-none" disabled={atCap(c)} status={atCap(c) ? 'Max level' : undefined} onClick={() => pickTarget(c.id)} />
               ))}
@@ -202,7 +202,7 @@ export function TrainingPage() {
             {candidates.length === 0 ? (
               <EmptyState title="Nothing to sacrifice" body="Win matches to earn more cards." />
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+              <div className="grid grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3">
                 {candidates.map((c) => {
                   const locked = inSquad.has(c.id)
                   const chosen = sac.includes(c.id)

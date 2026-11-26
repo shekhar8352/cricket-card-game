@@ -49,6 +49,7 @@ export function LiveMatchPage() {
   const balls = (m?.ballLog?.length ?? 0) >= (m?.result?.balls?.length ?? 0) ? m?.ballLog ?? [] : m?.result?.balls ?? []
   const { shown, current, inningsBreak, done, skipToEnd } = useMatchPlayback(id!, balls, m?.status === 'COMPLETE')
   const { speed, setSpeed } = useUI()
+  const [tab, setTab] = useState<'crease' | 'balls' | 'overs'>('crease')
 
   useEffect(() => {
     if (done && m?.status === 'COMPLETE') {
@@ -94,6 +95,14 @@ export function LiveMatchPage() {
 
   const youWinProb = battingSide === yourSide ? state.battingWinProb : 1 - state.battingWinProb
 
+  // When play pauses for a call, bring the panel into view: on a phone the
+  // player is usually watching the field further down.
+  const pauseRef = useRef<HTMLDivElement>(null)
+  const isPaused = !!(done && m?.pause && (m.status === 'INNINGS_BREAK' || m.status === 'SUPER_OVER'))
+  useEffect(() => {
+    if (isPaused) pauseRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [isPaused])
+
   // Big-moment overlay that clears itself.
   const [moment, setMoment] = useState<Moment | null>(null)
   const lastKey = useRef<string>('')
@@ -131,20 +140,51 @@ export function LiveMatchPage() {
   const nonStriker = current?.nonStrikerId ? live.now.batters.get(current.nonStrikerId) : undefined
   const bowler = current ? live.now.bowlers.get(current.bowlerId) : undefined
 
+  const crease = (
+    <>
+      {!current && <p className="text-muted">Openers are padding up.</p>}
+      {striker && <BatterRow line={striker} card={cards.get(striker.id)} onStrike matchup={current?.strikerId === striker.id ? current?.matchup : undefined} />}
+      {nonStriker && !nonStriker.out && <BatterRow line={nonStriker} card={cards.get(nonStriker.id)} />}
+      {current && current.chemistry != null && current.chemistry > 0 && nonStriker && !nonStriker.out && (
+        <p className={cn('flex items-center gap-1.5 text-xs font-semibold pb-1', current.chemistry >= 2 ? 'text-success' : 'text-muted')}>
+          <Link2 size={12} aria-hidden /> Chemistry {current.chemistry}/3: {current.chemistry >= 2 ? 'known partners, running hard' : 'compatriots, quick singles'}
+        </p>
+      )}
+      {bowler && <BowlerRow line={bowler} card={cards.get(bowler.id)} />}
+      {current?.rivalry && (
+        <p className="flex items-center gap-1.5 text-xs font-semibold text-cta">
+          <ShieldAlert size={12} aria-hidden /> {fullName(current.bowlerId)} has {fullName(current.strikerId)}’s number
+        </p>
+      )}
+      {state.now.lastWicket && (
+        <p className="text-sm text-muted mt-3 pt-3 border-t border-border">
+          <span className="font-semibold text-wicket">Last wicket:</span> {fullName(state.now.lastWicket.batterId)} {state.now.lastWicket.runs} ({state.now.lastWicket.balls}) · {state.now.lastWicket.text} · {state.now.lastWicket.score}
+        </p>
+      )}
+    </>
+  )
+  const commentary = (
+    <ol aria-live="polite" className="space-y-1">
+      {shown.length === 0 && <li className="text-muted">Commentary starts with the first ball.</li>}
+      {[...shown].reverse().slice(0, 24).map((b) => <CommentaryRow key={`${b.innings}-${b.seq}`} b={b} />)}
+    </ol>
+  )
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 sm:space-y-4">
       {/* Scorebug */}
       <section className="scorebug rounded-2xl overflow-hidden" aria-label="Scoreboard">
-        <div className="flex items-center justify-between gap-3 px-4 pt-3 text-xs font-semibold uppercase tracking-[0.16em] text-white/60">
-          <span className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-3 px-3 sm:px-4 pt-2.5 sm:pt-3 text-[11px] sm:text-xs font-semibold uppercase tracking-[0.14em] sm:tracking-[0.16em] text-white/60">
+          <span className="flex items-center gap-2 min-w-0 whitespace-nowrap">
             {done && m.status === 'COMPLETE' ? <span>Full time</span> : paused ? <span>{m.status === 'SUPER_OVER' ? 'Tied' : 'Innings break'}</span> : <><span className="live-dot" aria-hidden /> Live</>}
             <span className="text-white/30">·</span>
             {inSuperOver ? 'Super Over' : inn === 0 ? '1st innings' : 'Chase'}
-            {current?.powerplay && <span className="ml-1 rounded bg-cta px-1.5 py-0.5 text-[10px] font-bold text-cta-fg tracking-wide">POWERPLAY · 2 OUT</span>}
+            {current?.powerplay && <span className="ml-1 rounded bg-cta px-1.5 py-0.5 text-[10px] font-bold text-cta-fg tracking-wide">POWERPLAY<span className="hidden sm:inline"> · 2 OUT</span></span>}
+            {!paused && condDef && state.second && <span className="sm:hidden ml-1 rounded bg-white/15 px-1.5 py-0.5 text-[10px] font-bold tracking-wide normal-case">{condDef.name}</span>}
           </span>
           <span className="hidden sm:inline">{m?.pitch ? `${m.pitch.name} pitch · par ${m.pitch.par}` : `${OVERS} overs · ${MAX_WICKETS} wickets`}</span>
         </div>
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 py-3">
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 sm:px-4 py-2 sm:py-3">
           <TeamScore
             name={team(firstBatSide)}
             you={youBatFirst}
@@ -163,7 +203,13 @@ export function LiveMatchPage() {
             pending={inningsBreak || paused ? `Target ${state.first.runs + 1}` : 'Yet to bat'}
           />
         </div>
-        <div className="grid grid-cols-4 border-t border-white/10 text-center">
+        {/* Phones: one line instead of the four-stat grid. */}
+        <p className="sm:hidden border-t border-white/10 px-3 py-1.5 text-center text-[13px] font-semibold tabular text-white/85 truncate">
+          {state.second
+            ? `Need ${state.needed} off ${state.ballsLeft} · Req ${state.rrr != null ? state.rrr.toFixed(2) : '—'} · RR ${state.crr.toFixed(2)}`
+            : `RR ${state.crr.toFixed(2)} · Projected ${shown.length ? state.projected : '—'} · P'ship ${state.now.partnership.runs} (${state.now.partnership.balls})`}
+        </p>
+        <div className="hidden sm:grid grid-cols-4 border-t border-white/10 text-center">
           <Stat label="Run rate" value={state.crr.toFixed(2)} />
           {state.second ? (
             <>
@@ -180,13 +226,13 @@ export function LiveMatchPage() {
           )}
         </div>
         {/* Win predictor */}
-        <div className="px-4 pb-4 pt-3 border-t border-white/10">
-          <div className="flex justify-between text-xs font-semibold uppercase tracking-wider text-white/60 mb-1.5">
+        <div className="px-3 sm:px-4 pb-2.5 sm:pb-4 pt-2 sm:pt-3 border-t border-white/10">
+          <div className="flex justify-between text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-white/60 mb-1 sm:mb-1.5">
             <span>{team(yourSide)} {Math.round(youWinProb * 100)}%</span>
             <span className="hidden sm:inline">Win predictor</span>
             <span>{Math.round((1 - youWinProb) * 100)}% {m.opponent.name}</span>
           </div>
-          <div className="h-2.5 rounded-full overflow-hidden flex bg-white/10" role="meter" aria-label="Your chance to win" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(youWinProb * 100)}>
+          <div className="h-2 sm:h-2.5 rounded-full overflow-hidden flex bg-white/10" role="meter" aria-label="Your chance to win" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(youWinProb * 100)}>
             <div className="h-full bg-gradient-to-r from-[#1fc77a] to-[#5ff0a8] transition-[width] duration-700" style={{ width: `${youWinProb * 100}%` }} />
             <div className="h-full flex-1 bg-gradient-to-r from-[#ff7a7a] to-[#e04848]" />
           </div>
@@ -204,9 +250,13 @@ export function LiveMatchPage() {
         </section>
       )}
 
-      {paused && m.pause?.kind === 'break' && <BreakPanel m={m} pause={m.pause} mine={myLineup} teamName={team(yourSide)} />}
-      {paused && m.pause?.kind === 'super_over' && <SuperOverPanel m={m} pause={m.pause} mine={myLineup} />}
-      {!paused && condDef && state.second && <ConditionsCard c={condDef} />}
+      {paused && (
+        <div ref={pauseRef} className="scroll-mt-20">
+          {m.pause?.kind === 'break' && <BreakPanel m={m} pause={m.pause} mine={myLineup} teamName={team(yourSide)} />}
+          {m.pause?.kind === 'super_over' && <SuperOverPanel m={m} pause={m.pause} mine={myLineup} />}
+        </div>
+      )}
+      {!paused && condDef && state.second && <div className="hidden sm:block"><ConditionsCard c={condDef} /></div>}
 
       {/* Situation */}
       <SituationBanner sit={inningsBreak ? {
@@ -215,115 +265,121 @@ export function LiveMatchPage() {
         detail: `${team(firstBatSide)} made ${state.first.runs}/${state.first.wickets}. That’s ${rate(state.first.runs + 1, OVERS * BALLS_PER_OVER).toFixed(2)} an over required.`,
       } : sit} />
 
-      <div className="grid lg:grid-cols-[1fr_340px] gap-4">
-        <div className="space-y-4">
-          <Panel className="relative overflow-hidden">
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-              <h2 className="font-display text-xl font-bold uppercase tracking-wide">
+      <div className="grid lg:grid-cols-[1fr_340px] gap-3 sm:gap-4">
+        <div className="space-y-4 min-w-0">
+          <Panel className="relative overflow-hidden !p-3 sm:!p-5">
+            {/* Header: over and bowler on the left, playback on the right, one line. */}
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <h2 className="min-w-0 font-display text-lg sm:text-xl font-bold uppercase tracking-wide truncate">
                 Over {current ? current.over + 1 : 1}
                 <span className="text-muted font-sans text-sm normal-case tracking-normal ml-2">
-                  {current ? `${name(current.bowlerId)} bowling · ${oversText(live.now.legalBalls)} overs` : 'Waiting for the first ball'}
+                  {current ? `${name(current.bowlerId)} · ${oversText(live.now.legalBalls)} ov` : 'First ball coming up'}
                 </span>
               </h2>
-              <div className="flex gap-1.5" role="group" aria-label="Playback">
+              <div className="flex shrink-0 gap-1" role="group" aria-label="Playback">
                 <SpeedBtn on={speed === 1} onClick={() => setSpeed(1)} label="1×" />
                 <SpeedBtn on={speed === 2} onClick={() => setSpeed(2)} label="2×" icon={<FastForward size={14} aria-hidden />} />
-                <button type="button" onClick={skipToEnd} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 min-h-9 text-sm font-semibold cursor-pointer hover:bg-black/5 dark:hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
-                  <SkipForward size={14} aria-hidden /> Skip
+                <button type="button" onClick={skipToEnd} aria-label="Skip to the end" className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 sm:px-3 min-h-9 text-sm font-semibold cursor-pointer hover:bg-black/5 dark:hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+                  <SkipForward size={14} aria-hidden /> <span className="hidden sm:inline">Skip</span>
                 </button>
               </div>
             </div>
-            {current && (
-              <div className="flex flex-wrap items-center gap-2 mb-3 text-sm">
-                <PlanBadge kind="bat" value={current.approach} />
-                <PlanBadge kind="field" value={current.field} />
-                {current.counter && (
-                  <span className="inline-flex items-center gap-1 rounded-md bg-cta/15 border border-cta/40 px-2 py-0.5 text-xs font-bold text-cta">
-                    <Swords size={12} aria-hidden /> {current.counter}
-                  </span>
-                )}
-                {current.approach && current.field && current.approach === bestApproachVs(current.field) && (
-                  <span className="inline-flex items-center gap-1 rounded-md bg-success/15 px-2 py-0.5 text-xs font-bold text-success" title="The batting captain's call was the best reply to the field">
-                    <Brain size={12} aria-hidden /> {team(battingSide)} captain read it
-                  </span>
-                )}
-                {current.approach && current.field && current.field === bestFieldVs(current.approach) && (
-                  <span className="inline-flex items-center gap-1 rounded-md bg-success/15 px-2 py-0.5 text-xs font-bold text-success" title="The fielding captain's field was the best reply to the batting approach">
-                    <Brain size={12} aria-hidden /> {team(bowlingSide)} captain read it
-                  </span>
-                )}
-                {current.masterstroke && (
-                  <span className="inline-flex items-center gap-1 rounded-md bg-cta px-2 py-0.5 text-xs font-bold text-cta-fg">
-                    <Sparkles size={12} aria-hidden /> {current.masterstroke}
-                  </span>
-                )}
-                {current.freeHit && <span className="rounded-md bg-six px-2 py-0.5 text-xs font-bold text-white">FREE HIT</span>}
-                <PressureMeter dots={dotStreak} />
-              </div>
-            )}
-            <div className="flex flex-wrap gap-1.5 mb-3" aria-label="This over">
+            {/* Tactics: one fixed-height row that swipes sideways, so nothing below moves. */}
+            <div className="chip-scroll flex flex-nowrap items-center gap-2 h-7 mb-2 overflow-x-auto text-sm" aria-label="This over's calls">
+              {current && (
+                <>
+                  <PlanBadge kind="bat" value={current.approach} />
+                  <PlanBadge kind="field" value={current.field} />
+                  {current.counter && (
+                    <span className="shrink-0 inline-flex items-center gap-1 rounded-md bg-cta/15 border border-cta/40 px-2 py-0.5 text-xs font-bold text-cta whitespace-nowrap">
+                      <Swords size={12} aria-hidden /> {current.counter}
+                    </span>
+                  )}
+                  {current.approach && current.field && current.approach === bestApproachVs(current.field) && (
+                    <span className="shrink-0 inline-flex items-center gap-1 rounded-md bg-success/15 px-2 py-0.5 text-xs font-bold text-success whitespace-nowrap" title="The batting captain's call was the best reply to the field">
+                      <Brain size={12} aria-hidden /> {team(battingSide)} read it
+                    </span>
+                  )}
+                  {current.approach && current.field && current.field === bestFieldVs(current.approach) && (
+                    <span className="shrink-0 inline-flex items-center gap-1 rounded-md bg-success/15 px-2 py-0.5 text-xs font-bold text-success whitespace-nowrap" title="The fielding captain's field was the best reply to the batting approach">
+                      <Brain size={12} aria-hidden /> {team(bowlingSide)} read it
+                    </span>
+                  )}
+                  {current.masterstroke && (
+                    <span className="shrink-0 inline-flex items-center gap-1 rounded-md bg-cta px-2 py-0.5 text-xs font-bold text-cta-fg whitespace-nowrap">
+                      <Sparkles size={12} aria-hidden /> {current.masterstroke}
+                    </span>
+                  )}
+                  {current.freeHit && <span className="shrink-0 rounded-md bg-six px-2 py-0.5 text-xs font-bold text-white">FREE HIT</span>}
+                  <PressureMeter dots={dotStreak} />
+                </>
+              )}
+            </div>
+            <div className="flex flex-nowrap gap-1.5 h-9 sm:h-10 mb-2 overflow-hidden" aria-label="This over">
               {overBalls.map((b, i) => {
                 const c = ballChip(b)
-                return <span key={`${b.seq}-${i}`} className={cn('ball-chip', c.cls)} aria-label={c.label}>{c.t}</span>
+                return <span key={`${b.seq}-${i}`} className={cn('ball-chip shrink-0', c.cls)} aria-label={c.label}>{c.t}</span>
               })}
               {Array.from({ length: Math.max(0, BALLS_PER_OVER - legalInOver) }).map((_, i) => (
-                <span key={`e${i}`} className="ball-chip ball-empty" aria-hidden>·</span>
+                <span key={`e${i}`} className="ball-chip ball-empty shrink-0" aria-hidden>·</span>
               ))}
             </div>
-            <div className="relative">
+            {/* The field fits the screen height on phones; pop-ups float over it. */}
+            <div className="relative mx-auto w-full max-w-[min(100%,48svh)] sm:max-w-md">
               <FieldSvg event={current} powerplay={current?.powerplay} />
               {moment && (
                 <div className="moment" key={moment.key} aria-hidden>
                   <span className={cn('moment-text', moment.cls)}>{moment.text}</span>
                 </div>
               )}
+              {current?.traitsTriggered && current.traitsTriggered.length > 0 && (
+                <div className="absolute inset-x-0 top-1 flex flex-wrap gap-1.5 justify-center pointer-events-none" key={`traits-${current.innings}-${current.seq}`}>
+                  {current.traitsTriggered.map((t) => (
+                    <span key={t} className="fade-up inline-flex items-center gap-1 rounded-full bg-black/60 backdrop-blur border border-cta/50 px-2.5 py-0.5 text-xs font-semibold text-[#ffd166]">
+                      <Sparkles size={12} aria-hidden /> {t}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
-            {current?.traitsTriggered && current.traitsTriggered.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-2 justify-center">
-                {current.traitsTriggered.map((t) => (
-                  <span key={t} className="inline-flex items-center gap-1 rounded-full bg-cta/15 border border-cta/40 px-3 py-1 text-sm font-semibold text-cta">
-                    <Sparkles size={14} aria-hidden /> {t} activated
-                  </span>
-                ))}
-              </div>
-            )}
           </Panel>
 
-          <OverStrip st={state.now} name={name} />
+          <div className="hidden lg:block"><OverStrip st={state.now} name={name} /></div>
         </div>
 
-        <div className="space-y-4">
+        <div className="hidden lg:block space-y-4">
           <Panel>
             <h2 className="font-display text-lg font-bold uppercase tracking-wide mb-2">At the crease</h2>
-            {!current && <p className="text-muted">Openers are padding up.</p>}
-            {striker && <BatterRow line={striker} card={cards.get(striker.id)} onStrike matchup={current?.strikerId === striker.id ? current?.matchup : undefined} />}
-            {nonStriker && !nonStriker.out && <BatterRow line={nonStriker} card={cards.get(nonStriker.id)} />}
-            {current && current.chemistry != null && current.chemistry > 0 && nonStriker && !nonStriker.out && (
-              <p className={cn('flex items-center gap-1.5 text-xs font-semibold pb-1', current.chemistry >= 2 ? 'text-success' : 'text-muted')}>
-                <Link2 size={12} aria-hidden /> Chemistry {current.chemistry}/3: {current.chemistry >= 2 ? 'known partners, running hard' : 'compatriots, quick singles'}
-              </p>
-            )}
-            {bowler && <BowlerRow line={bowler} card={cards.get(bowler.id)} />}
-            {current?.rivalry && (
-              <p className="flex items-center gap-1.5 text-xs font-semibold text-cta">
-                <ShieldAlert size={12} aria-hidden /> {fullName(current.bowlerId)} has {fullName(current.strikerId)}’s number
-              </p>
-            )}
-            {state.now.lastWicket && (
-              <p className="text-sm text-muted mt-3 pt-3 border-t border-border">
-                <span className="font-semibold text-wicket">Last wicket:</span> {fullName(state.now.lastWicket.batterId)} {state.now.lastWicket.runs} ({state.now.lastWicket.balls}) · {state.now.lastWicket.text} · {state.now.lastWicket.score}
-              </p>
-            )}
+            {crease}
           </Panel>
-
           <Panel className="max-h-[26rem] overflow-y-auto">
             <h2 className="font-display text-lg font-bold uppercase tracking-wide mb-2">Ball by ball</h2>
-            <ol aria-live="polite" className="space-y-1">
-              {shown.length === 0 && <li className="text-muted">Commentary starts with the first ball.</li>}
-              {[...shown].reverse().slice(0, 24).map((b) => <CommentaryRow key={`${b.innings}-${b.seq}`} b={b} />)}
-            </ol>
+            {commentary}
           </Panel>
         </div>
+
+        {/* Phones: the rest sits in tabs under the field instead of a long page. */}
+        <Panel className="lg:hidden !p-3">
+          <div role="tablist" aria-label="Match details" className="grid grid-cols-3 gap-1 rounded-xl bg-black/5 dark:bg-white/5 p-1 mb-3">
+            {([['crease', 'At the crease'], ['balls', 'Commentary'], ['overs', 'Overs']] as const).map(([k, label]) => (
+              <button
+                key={k}
+                type="button"
+                role="tab"
+                aria-selected={tab === k}
+                onClick={() => setTab(k)}
+                className={cn('min-h-10 rounded-lg text-sm font-semibold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent', tab === k ? 'bg-[var(--card-bg)] shadow text-fg' : 'text-muted')}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div role="tabpanel">
+            {tab === 'crease' && crease}
+            {tab === 'balls' && <div className="max-h-[22rem] overflow-y-auto">{commentary}</div>}
+            {tab === 'overs' && <OverStrip st={state.now} name={name} bare />}
+          </div>
+        </Panel>
       </div>
     </div>
   )
@@ -363,11 +419,13 @@ function Stat({ label, value, hot }: { label: string; value: string; hot?: boole
 function SituationBanner({ sit }: { sit: Situation }) {
   const { cls, Icon } = toneStyles[sit.tone]
   return (
-    <div className={cn('glass flex items-start gap-3 rounded-2xl border-2 px-3 sm:px-4 py-2.5 sm:py-3 fade-up', cls)} key={sit.headline} role="status">
-      <Icon className="mt-1 shrink-0" size={22} aria-hidden />
-      <div>
-        <p className="font-display text-xl sm:text-2xl font-bold leading-tight">{sit.headline}</p>
-        {sit.detail && <p className="text-sm sm:text-base text-muted">{sit.detail}</p>}
+    // Fixed height: one line each for the headline and the detail, so the field
+    // below never moves when the wording changes.
+    <div className={cn('glass flex items-center gap-3 rounded-2xl border-2 px-3 sm:px-4 h-[60px] sm:h-[72px] transition-colors duration-300', cls)} role="status">
+      <Icon className="shrink-0" size={22} aria-hidden />
+      <div className="min-w-0">
+        <p className="font-display text-lg sm:text-2xl font-bold leading-tight truncate">{sit.headline}</p>
+        <p className="text-[13px] sm:text-base text-muted truncate">{sit.detail ?? '\u00a0'}</p>
       </div>
     </div>
   )
@@ -426,10 +484,11 @@ function BowlerRow({ line, card }: { line: BowlLine; card?: Card }) {
   )
 }
 
-function OverStrip({ st, name }: { st: InningsState; name: (id: string) => string }) {
+function OverStrip({ st, name, bare }: { st: InningsState; name: (id: string) => string; bare?: boolean }) {
   const max = Math.max(12, ...st.overs.filter(Boolean).map((o) => o.runs))
+  const Wrap = bare ? 'div' : Panel
   return (
-    <Panel>
+    <Wrap>
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-display text-lg font-bold uppercase tracking-wide flex items-center gap-2">
           <Target size={18} aria-hidden /> Over by over
@@ -457,7 +516,7 @@ function OverStrip({ st, name }: { st: InningsState; name: (id: string) => strin
           )
         })}
       </ol>
-    </Panel>
+    </Wrap>
   )
 }
 
