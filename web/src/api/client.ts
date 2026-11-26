@@ -1,5 +1,5 @@
 import type { SavedDefault } from '../lib/plan'
-import type { AccountStats, PublicProfile, EngineModel, LeaderRow, MatchDTO, OddsRequest, OddsResult, PlayerCard, Streak, SuperOverPicks, Tournament, TournamentSummary, TrainResult, User } from '../types/engine'
+import type { AccountStats, PublicProfile, EngineModel, LeaderRow, MatchDTO, OddsRequest, OddsResult, PlayerCard, Streak, SuperOverPicks, Tournament, TournamentSummary, TrainResult, TrophyProgress, User } from '../types/engine'
 
 /** Before a match the player picks only the seven, the captain and the orders. */
 export interface LineupBody {
@@ -50,6 +50,7 @@ export const api = {
       method: 'POST', body: JSON.stringify({ username, password }),
     }),
   me: () => req<{ user: User; streak?: Streak }>('/me'),
+  myTrophies: () => req<TrophyProgress>('/me/trophies'),
   submitBreak: (id: string, body: { call: string; battingOrder?: string[]; bowlingPlan?: string[] }) =>
     req<MatchDTO>(`/matches/${id}/break`, { method: 'POST', body: JSON.stringify(body) }),
   submitSuperOver: (id: string, body: SuperOverPicks | Record<string, never>) =>
