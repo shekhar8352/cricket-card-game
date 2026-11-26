@@ -77,38 +77,153 @@ type User struct {
 	Username     string    `json:"username"`
 	PasswordHash string    `json:"-"`
 	Trophies     int       `json:"trophies"`
-	Arena        string    `json:"arena"`
-	CreatedAt    time.Time `json:"createdAt"`
+	Arena        string    `json:"arena"` // arena held, which the 100-trophy buffer can keep above the count
+	BestTrophies int        `json:"bestTrophies"`
+	BestAt       *time.Time `json:"bestAt,omitempty"`
+	CreatedAt    time.Time  `json:"createdAt"`
 }
 
 func (s *Store) CreateUser(ctx context.Context, username, hash string) (User, error) {
 	var u User
 	err := s.Pool.QueryRow(ctx, `
 		INSERT INTO users (username, password_hash) VALUES ($1,$2)
-		RETURNING id, username, password_hash, trophies, arena, created_at
-	`, username, hash).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Trophies, &u.Arena, &u.CreatedAt)
+		RETURNING id, username, password_hash, trophies, arena, created_at, best_trophies, best_at
+	`, username, hash).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Trophies, &u.Arena, &u.CreatedAt, &u.BestTrophies, &u.BestAt)
 	return u, err
 }
 
 func (s *Store) UserByName(ctx context.Context, username string) (User, error) {
 	var u User
 	err := s.Pool.QueryRow(ctx, `
-		SELECT id, username, password_hash, trophies, arena, created_at FROM users WHERE username=$1
-	`, username).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Trophies, &u.Arena, &u.CreatedAt)
+		SELECT id, username, password_hash, trophies, arena, created_at, best_trophies, best_at FROM users WHERE username=$1
+	`, username).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Trophies, &u.Arena, &u.CreatedAt, &u.BestTrophies, &u.BestAt)
 	return u, err
 }
 
 func (s *Store) UserByID(ctx context.Context, id uuid.UUID) (User, error) {
 	var u User
 	err := s.Pool.QueryRow(ctx, `
-		SELECT id, username, password_hash, trophies, arena, created_at FROM users WHERE id=$1
-	`, id).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Trophies, &u.Arena, &u.CreatedAt)
+		SELECT id, username, password_hash, trophies, arena, created_at, best_trophies, best_at FROM users WHERE id=$1
+	`, id).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Trophies, &u.Arena, &u.CreatedAt, &u.BestTrophies, &u.BestAt)
 	return u, err
 }
 
-func (s *Store) UpdateTrophies(ctx context.Context, id uuid.UUID, trophies int, arena string) error {
-	_, err := s.Pool.Exec(ctx, `UPDATE users SET trophies=$2, arena=$3 WHERE id=$1`, id, trophies, arena)
+// TrophyState is the part of a user a trophy change touches.
+type TrophyState struct {
+	Trophies     int
+	Arena        string
+	BestTrophies int
+}
+
+// ApplyTrophies changes a user's trophies by delta (never below 0) under a row
+// lock, so concurrent results for the same player can't overwrite each other
+// or both claim the same first-time milestone. resolve picks the arena held
+// after the change. It returns the state before and after.
+func (s *Store) ApplyTrophies(ctx context.Context, id uuid.UUID, delta int, resolve func(arena string, trophies int) string) (before, after TrophyState, err error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return before, after, err
+	}
+	defer tx.Rollback(ctx)
+	if err = tx.QueryRow(ctx, `SELECT trophies, arena, best_trophies FROM users WHERE id=$1 FOR UPDATE`, id).
+		Scan(&before.Trophies, &before.Arena, &before.BestTrophies); err != nil {
+		return before, after, err
+	}
+	after.Trophies = max(0, before.Trophies+delta)
+	after.Arena = resolve(before.Arena, after.Trophies)
+	after.BestTrophies = max(before.BestTrophies, after.Trophies)
+	if _, err = tx.Exec(ctx, `UPDATE users SET trophies=$2, arena=$3, best_trophies=$4::int,
+			best_at = CASE WHEN $4::int > $5::int THEN now() ELSE best_at END
+		WHERE id=$1`, id, after.Trophies, after.Arena, after.BestTrophies, before.BestTrophies); err != nil {
+		return before, after, err
+	}
+	return before, after, tx.Commit(ctx)
+}
+
+// SetArenaAndBest corrects a player's held arena and raises their personal best
+// (with when it happened). Used when the arena list or rules change.
+func (s *Store) SetArenaAndBest(ctx context.Context, id uuid.UUID, arena string, best int, bestAt *time.Time) error {
+	_, err := s.Pool.Exec(ctx, `UPDATE users SET arena=$2,
+			best_at = CASE WHEN $3::int > best_trophies OR best_at IS NULL THEN COALESCE($4::timestamptz, best_at, now()) ELSE best_at END,
+			best_trophies = GREATEST(best_trophies, $3::int)
+		WHERE id=$1`, id, arena, best, bestAt)
 	return err
+}
+
+// AllTrophyHistory returns every completed ranked match's trophy change, per
+// user, oldest first: one query for the whole player base.
+func (s *Store) AllTrophyHistory(ctx context.Context) (map[uuid.UUID][]TrophyPoint, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT u, id, at, d FROM (
+			SELECT home_user_id AS u, id, COALESCE(completed_at, created_at) AS at, COALESCE(trophy_delta_home, 0) AS d
+			FROM matches WHERE status = 'COMPLETE' AND mode = 'ranked'
+			UNION ALL
+			SELECT away_user_id, id, COALESCE(completed_at, created_at), COALESCE(trophy_delta_away, 0)
+			FROM matches WHERE status = 'COMPLETE' AND mode = 'ranked' AND away_user_id IS NOT NULL AND NOT is_bot
+		) x ORDER BY u, at, id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[uuid.UUID][]TrophyPoint{}
+	for rows.Next() {
+		var u uuid.UUID
+		var p TrophyPoint
+		if err := rows.Scan(&u, &p.MatchID, &p.At, &p.Delta); err != nil {
+			return nil, err
+		}
+		out[u] = append(out[u], p)
+	}
+	return out, rows.Err()
+}
+
+// EveryUser returns all users, unlimited (AllUsers is capped for the leaderboard).
+func (s *Store) EveryUser(ctx context.Context) ([]User, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT id, username, password_hash, trophies, arena, created_at, best_trophies, best_at FROM users`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []User
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Trophies, &u.Arena, &u.CreatedAt, &u.BestTrophies, &u.BestAt); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+// TrophyHistory returns each completed ranked match's trophy change for the
+// user, oldest first.
+func (s *Store) TrophyHistory(ctx context.Context, userID uuid.UUID) ([]TrophyPoint, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT id, COALESCE(completed_at, created_at),
+			CASE WHEN home_user_id = $1 THEN COALESCE(trophy_delta_home, 0) ELSE COALESCE(trophy_delta_away, 0) END
+		FROM matches
+		WHERE (home_user_id = $1 OR away_user_id = $1) AND status = 'COMPLETE' AND mode = 'ranked'
+		ORDER BY COALESCE(completed_at, created_at), id`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TrophyPoint
+	for rows.Next() {
+		var p TrophyPoint
+		if err := rows.Scan(&p.MatchID, &p.At, &p.Delta); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// TrophyPoint is one ranked result's trophy change.
+type TrophyPoint struct {
+	MatchID uuid.UUID `json:"matchId"`
+	At      time.Time `json:"at"`
+	Delta   int       `json:"delta"`
 }
 
 type CardRow struct {
@@ -448,7 +563,7 @@ func (s *Store) Squad(ctx context.Context, userID uuid.UUID) (SquadRow, error) {
 }
 
 func (s *Store) Leaderboard(ctx context.Context, arena string, limit int) ([]User, error) {
-	q := `SELECT id, username, password_hash, trophies, arena, created_at FROM users`
+	q := `SELECT id, username, password_hash, trophies, arena, created_at, best_trophies, best_at FROM users`
 	args := []any{}
 	if arena != "" {
 		q += ` WHERE arena=$1`
@@ -463,7 +578,7 @@ func (s *Store) Leaderboard(ctx context.Context, arena string, limit int) ([]Use
 	var out []User
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Trophies, &u.Arena, &u.CreatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Trophies, &u.Arena, &u.CreatedAt, &u.BestTrophies, &u.BestAt); err != nil {
 			return nil, err
 		}
 		out = append(out, u)

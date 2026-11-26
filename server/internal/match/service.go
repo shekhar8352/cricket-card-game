@@ -362,8 +362,9 @@ func (s *Service) LockLineup(ctx context.Context, user store.User, matchID uuid.
 const RewardCardsPerWin = 3
 
 // grantRewards gives the win's cards. With boosted, the first card is rolled
-// with the next arena's odds (a win-streak reward).
-func (s *Service) grantRewards(ctx context.Context, user store.User, matchID uuid.UUID, boosted bool) error {
+// with the next arena's odds (a win-streak reward). Each arena reached for the
+// first time adds a milestone card of at least that arena's guaranteed rarity.
+func (s *Service) grantRewards(ctx context.Context, user store.User, matchID uuid.UUID, boosted bool, milestones []trophy.Arena) error {
 	catalog, err := s.Store.Players(ctx)
 	if err != nil {
 		return err
@@ -377,11 +378,24 @@ func (s *Service) grantRewards(ctx context.Context, user store.User, matchID uui
 	for i := 0; i < RewardCardsPerWin; i++ {
 		arena := user.Arena
 		if boosted && i == 0 {
-			if next := trophy.NextArena(user.Trophies); next != nil {
+			if next := trophy.NextAfter(user.Arena); next != nil {
 				arena = next.Name
 			}
 		}
 		r := cards.RollRarity(rng, arena)
+		pool := byR[r]
+		if len(pool) == 0 {
+			pool = catalog
+		}
+		p := pool[rng.Intn(len(pool))]
+		c, err := s.Store.InsertCard(ctx, user.ID, p.PlayerID, r, 1)
+		if err != nil {
+			return err
+		}
+		ids = append(ids, c.ID)
+	}
+	for _, a := range milestones {
+		r := cards.MilestoneRarity(rng, a.Name)
 		pool := byR[r]
 		if len(pool) == 0 {
 			pool = catalog
