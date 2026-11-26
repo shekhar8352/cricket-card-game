@@ -1,9 +1,10 @@
+import { ArenaBadge } from '../trophy/ArenaBadge'
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api, setToken } from '../../api/client'
 import { useUI } from '../../store/ui'
-import { Trophy, Home, Play, Layers, Dumbbell, Medal, History, Users, Moon, Sun, LogOut, Menu, UserRound, BookOpen } from 'lucide-react'
+import { Home, Play, Layers, Dumbbell, Medal, History, Users, Moon, Sun, LogOut, Menu, UserRound, BookOpen } from 'lucide-react'
 import { cn } from '../../lib/cn'
 import { Brand } from '../ui/chrome'
 
@@ -124,10 +125,10 @@ export function AppShell() {
           <div className="md:hidden"><Brand /></div>
           <div className="flex items-center gap-2 ml-auto">
             {user && (
-              <NavLink to="/account" className="flex items-center gap-2 rounded-full border border-gold/40 bg-gold/10 px-3.5 min-h-10 hover:bg-gold/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent" aria-label={`${user.trophies} trophies, ${user.arena} arena. Open your account`}>
-                <Trophy size={18} className="text-gold" aria-hidden />
-                <span className="tabular font-display text-xl font-bold">{user.trophies}</span>
-                <span className="text-muted hidden sm:inline">{user.arena}</span>
+              <NavLink to="/account" className="flex items-center gap-2 rounded-full border border-gold/40 bg-gold/10 px-3.5 min-h-10 hover:bg-gold/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent" aria-label={`${user.trophies} trophies, ${user.arenaRank?.label ?? user.arena}. Open your account`}>
+                <ArenaBadge arena={user.arena} division={user.arenaRank?.division} size="xs" title="" />
+                <span className="tabular font-display text-xl font-bold">{user.trophies.toLocaleString()}</span>
+                <span className="text-muted hidden sm:inline">{user.arenaRank?.label ?? user.arena}</span>
               </NavLink>
             )}
             <button type="button" onClick={toggleTheme} className="md:hidden inline-flex items-center justify-center w-11 h-11 rounded-xl cursor-pointer hover:bg-black/5 dark:hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent" aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>

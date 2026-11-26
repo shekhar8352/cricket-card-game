@@ -146,6 +146,13 @@ export interface ResultExtras {
   reads?: Record<string, number>
   repGained?: Record<string, number>
   boosted?: Record<string, boolean>
+  rankBefore?: Record<string, ArenaRank>
+  rankAfter?: Record<string, ArenaRank>
+  /** "up", "down", "protected" (kept by the buffer) or "". */
+  rankMove?: Record<string, string>
+  newBest?: Record<string, boolean>
+  /** Arenas reached for the first time: each earned a milestone card. */
+  newArenas?: Record<string, string[]>
 }
 
 export interface CardForm {
@@ -196,6 +203,26 @@ export interface BallEvent {
   wickets: number
 }
 
+/** One rung of the trophy road: an arena division ("Gold II"). */
+export interface TrophyStep {
+  arena: string
+  /** 3 = III (entry) .. 1 = I (top of the arena); 0 for the top arena. */
+  division: number
+  label: string
+  minTrophy: number
+}
+
+/** Where a player stands: arena held, division, next step and buffer protection. */
+export interface ArenaRank extends TrophyStep {
+  arenaIndex: number
+  trophies: number
+  next?: TrophyStep
+  /** Below the arena floor but kept in it by the trophy buffer. */
+  protected: boolean
+  /** Dropping below this count loses the arena (0 in Bronze). */
+  demoteBelow: number
+}
+
 export interface User {
   id: string
   username: string
@@ -203,6 +230,19 @@ export interface User {
   arena: string
   nextArena?: string
   nextArenaMin?: number
+  arenaRank?: ArenaRank
+  bestTrophies?: number
+  bestRank?: ArenaRank
+  bestAt?: string | null
+}
+
+export interface TrophyProgress {
+  road: TrophyStep[]
+  buffer: number
+  start: number
+  history: { matchId: string; at: string; delta: number; trophies: number }[]
+  rank: ArenaRank
+  best: number
 }
 
 export interface MatchDTO {
@@ -281,6 +321,9 @@ export interface LeaderRow {
   username: string
   trophies: number
   arena: string
+  division?: string
+  protected?: boolean
+  best?: number
   me: boolean
 }
 
@@ -402,7 +445,8 @@ export interface EngineModel {
   pressure: { startsAt: number; max: number }
   matchup: { weakBelow: number; strongAtLeast: number; weakEffect: WeightDelta; strongEffect: WeightDelta }
   traits: { code: string; name: string; description: string }[]
-  arenas: { Name: string; MinTrophy: number }[]
+  arenas: { name: string; minTrophy: number }[]
+  trophyRules: { buffer: number; divisions: number; road: TrophyStep[]; milestoneFloor: Record<string, string> }
   progression: {
     rewardCardsPerWin: number
     rewardOdds: Record<string, { Bronze: number; Silver: number; Gold: number; Legend: number }>

@@ -44,6 +44,12 @@ func OddsForArena(arena string) RewardOdds {
 		return RewardOdds{28, 40, 25, 7}
 	case "Legend":
 		return RewardOdds{18, 38, 32, 12}
+	case "Titan":
+		return RewardOdds{12, 36, 36, 16}
+	case "Mythic":
+		return RewardOdds{8, 32, 40, 20}
+	case "Hall of Fame":
+		return RewardOdds{5, 27, 43, 25}
 	default:
 		return RewardOdds{82, 16, 2, 0}
 	}
@@ -64,6 +70,31 @@ func RollRarity(rng *rand.Rand, arena string) engine.Rarity {
 		return engine.RaritySilver
 	}
 	return engine.RarityBronze
+}
+
+// MilestoneFloor is the lowest rarity of the one-time card for reaching an arena.
+func MilestoneFloor(arena string) engine.Rarity {
+	switch arena {
+	case "Silver":
+		return engine.RaritySilver
+	case "Gold", "Crystal":
+		return engine.RarityGold
+	case "Champion", "Legend", "Titan", "Mythic", "Hall of Fame":
+		return engine.RarityLegend
+	}
+	return engine.RarityBronze
+}
+
+var rarityOrder = map[engine.Rarity]int{engine.RarityBronze: 0, engine.RaritySilver: 1, engine.RarityGold: 2, engine.RarityLegend: 3}
+
+// MilestoneRarity rolls the arena's normal odds and lifts the result to the
+// milestone floor.
+func MilestoneRarity(rng *rand.Rand, arena string) engine.Rarity {
+	r := RollRarity(rng, arena)
+	if f := MilestoneFloor(arena); rarityOrder[r] < rarityOrder[f] {
+		return f
+	}
+	return r
 }
 
 func LossXP() int { return 18 }

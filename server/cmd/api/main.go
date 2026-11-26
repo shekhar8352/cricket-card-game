@@ -65,6 +65,11 @@ func main() {
 	}
 
 	api := httpapi.New(st, q, rdb, secret)
+	if n, err := api.Match.NormalizeRanks(ctx); err != nil {
+		log.Printf("normalize ranks: %v", err)
+	} else if n > 0 {
+		log.Printf("normalize ranks: updated %d players", n)
+	}
 	srv := &http.Server{Addr: addr, Handler: api.Router()}
 	go func() {
 		log.Printf("api listening on %s", addr)

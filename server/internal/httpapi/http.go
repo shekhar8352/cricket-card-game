@@ -77,6 +77,7 @@ func (s *Server) Router() http.Handler {
 		r.Use(s.auth)
 		r.Get("/me", s.me)
 		r.Get("/me/stats", s.myStats)
+		r.Get("/me/trophies", s.myTrophies)
 		r.Get("/cards", s.listCards)
 		r.Post("/cards/{id}/train", s.train)
 		r.Get("/squad", s.getSquad)
@@ -205,7 +206,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	u := userFrom(r)
-	next := trophy.NextArena(u.Trophies)
+	next := trophy.NextAfter(u.Arena)
 	streak, _ := s.Store.WinStreak(r.Context(), u.ID)
 	writeJSON(w, 200, map[string]any{
 		"user":      publicUser(u),
@@ -409,16 +410,20 @@ func (s *Server) leaderboard(w http.ResponseWriter, r *http.Request) {
 	}
 	me := userFrom(r)
 	type row struct {
-		Rank     int    `json:"rank"`
-		ID       string `json:"id"`
-		Username string `json:"username"`
-		Trophies int    `json:"trophies"`
-		Arena    string `json:"arena"`
-		Me       bool   `json:"me"`
+		Rank      int    `json:"rank"`
+		ID        string `json:"id"`
+		Username  string `json:"username"`
+		Trophies  int    `json:"trophies"`
+		Arena     string `json:"arena"`
+		Division  string `json:"division"` // "Gold II"
+		Protected bool   `json:"protected"`
+		Best      int    `json:"best"`
+		Me        bool   `json:"me"`
 	}
 	var out []row
 	for i, u := range users {
-		out = append(out, row{i + 1, u.ID.String(), u.Username, u.Trophies, u.Arena, u.ID == me.ID})
+		rk := trophy.RankOf(u.Arena, u.Trophies)
+		out = append(out, row{i + 1, u.ID.String(), u.Username, u.Trophies, u.Arena, rk.Label, rk.Protected, max(u.BestTrophies, u.Trophies), u.ID == me.ID})
 	}
 	writeJSON(w, 200, out)
 }
@@ -639,16 +644,70 @@ func mapCard(c store.CardRow) map[string]any {
 }
 
 func publicUser(u store.User) map[string]any {
-	next := trophy.NextArena(u.Trophies)
+	next := trophy.NextAfter(u.Arena)
 	var nextName string
 	var nextMin int
 	if next != nil {
 		nextName, nextMin = next.Name, next.MinTrophy
 	}
+	best := max(u.BestTrophies, u.Trophies)
 	return map[string]any{
 		"id": u.ID, "username": u.Username, "trophies": u.Trophies, "arena": u.Arena,
 		"nextArena": nextName, "nextArenaMin": nextMin,
+		// Arena, division, next step and buffer protection.
+		"arenaRank":    trophy.RankOf(u.Arena, u.Trophies),
+		"bestTrophies": best,
+		"bestRank":     trophy.RankOf(trophy.ArenaFor(best).Name, best),
+		"bestAt":       u.BestAt,
 	}
+}
+
+// myTrophies is the trophy road (every arena and division), the buffer rule,
+// and the player's trophy count after each ranked match.
+func (s *Server) myTrophies(w http.ResponseWriter, r *http.Request) {
+	u := userFrom(r)
+	hist, err := s.Store.TrophyHistory(r.Context(), u.ID)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	type point struct {
+		MatchID  string `json:"matchId"`
+		At       string `json:"at"`
+		Delta    int    `json:"delta"`
+		Trophies int    `json:"trophies"`
+	}
+	// Replay forward from zero with the floor at 0, as the trophies were applied.
+	replay := func(start int) []point {
+		out := make([]point, len(hist))
+		t := start
+		for i, h := range hist {
+			t = trophy.Apply(t, h.Delta)
+			out[i] = point{h.MatchID.String(), h.At.Format(time.RFC3339), h.Delta, t}
+		}
+		return out
+	}
+	t := 0
+	pts := replay(t)
+	if n := len(pts); n == 0 {
+		t = u.Trophies
+	} else if pts[n-1].Trophies != u.Trophies {
+		// History doesn't add up to today (trophies set outside matches): work
+		// backwards from the real count so the line ends where the player is.
+		t = u.Trophies
+		for i := n - 1; i >= 0; i-- {
+			pts[i].Trophies = t
+			t = max(0, t-hist[i].Delta)
+		}
+	}
+	writeJSON(w, 200, map[string]any{
+		"road":    trophy.Road(),
+		"buffer":  trophy.Buffer,
+		"start":   t,
+		"history": pts,
+		"rank":    trophy.RankOf(u.Arena, u.Trophies),
+		"best":    max(u.BestTrophies, u.Trophies),
+	})
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

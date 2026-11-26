@@ -1,7 +1,8 @@
+import { ArenaBadge } from '../components/trophy/ArenaBadge'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, CalendarDays, Crown, Link2, Medal, Shield, Target, Trophy } from 'lucide-react'
+import { ArrowLeft, CalendarDays, Crown, Link2, Medal, Target, TrendingUp, Trophy } from 'lucide-react'
 import { api } from '../api/client'
 import { Button } from '../components/ui/button'
 import { EmptyState, Panel } from '../components/ui/chrome'
@@ -53,7 +54,8 @@ export function ProfilePage() {
               <h1 className="font-display text-3xl sm:text-5xl font-bold uppercase leading-none break-all">{a.username}</h1>
               <p className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-white/75 text-sm">
                 <span className="inline-flex items-center gap-1.5"><CalendarDays size={15} aria-hidden /> Joined {date(a.createdAt)}</span>
-                <span className="inline-flex items-center gap-1.5"><Shield size={15} aria-hidden /> {a.arena} arena</span>
+                <span className="inline-flex items-center gap-1.5"><ArenaBadge arena={a.arena} division={a.arenaRank?.division} size="xs" /> {a.arenaRank?.label ?? a.arena} · {a.arena} arena</span>
+                {a.bestTrophies != null && <span className="inline-flex items-center gap-1.5"><TrendingUp size={15} aria-hidden /> Best {a.bestTrophies.toLocaleString()}</span>}
               </p>
             </div>
           </div>
