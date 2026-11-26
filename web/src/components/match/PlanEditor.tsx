@@ -42,15 +42,24 @@ function SortableRow({ id, name, index, total, onMove }: { id: string; name: str
  * match (approach, field, toss, masterstroke). Used for the saved default
  * (Squad & strategy) and for each match's lineup.
  */
+export type PlanSection = 'team' | 'batting' | 'bowling' | 'captain'
+
 export function PlanEditor({
-  cards, plan, onChange, pitch, aside,
+  cards, plan, onChange, pitch, aside, section, teamTools,
 }: {
   cards: Card[]
   plan: MatchPlan
   onChange: (p: MatchPlan) => void
   pitch?: PitchDef
   aside?: ReactNode // shown beside the team (e.g. the opponent's cards)
+  /** Phones show one section at a time (the parent's tabs pick it); `null`
+   *  hides them all on phones. Undefined shows everything, as on desktop. */
+  section?: PlanSection | null
+  /** Extra controls at the top of the team section (e.g. "Fill best rated"). */
+  teamTools?: ReactNode
 }) {
+  // On phones only the chosen section shows; from lg up everything does.
+  const only = (k: PlanSection) => (section === undefined || section === k ? '' : 'hidden lg:block')
   const [filter, setFilter] = useState<Role | ''>('')
   const [traySort, setTraySort] = useState<'overall' | 'form'>('overall')
   const byId = useMemo(() => Object.fromEntries(cards.map((c) => [c.id, c])), [cards])
@@ -90,8 +99,9 @@ export function PlanEditor({
   const chem = teamChemistry(plan.order, byId, chemRules)
 
   return (
-    <div className="space-y-6">
-      <div className={cn('grid gap-4', aside && 'lg:grid-cols-2')}>
+    <div className="space-y-4 lg:space-y-6">
+      {teamTools && <div className={cn('lg:hidden', only('team'))}>{teamTools}</div>}
+      <div className={cn('grid gap-4', aside && 'lg:grid-cols-2', section !== undefined && section !== 'team' && 'hidden lg:grid')}>
         <Panel>
           <h2 className="font-display text-2xl font-semibold">Your seven · {filled}/7</h2>
           <p className="text-muted text-sm mb-3">Tap an empty slot to filter that role. Tap a filled slot to remove that player.</p>
@@ -108,10 +118,10 @@ export function PlanEditor({
             {team.stumping >= 80 ? '. A strong keeper helps spin overs.' : ''}
           </p>
         </Panel>
-        {aside}
+        {aside && <div className={cn(section !== undefined && 'hidden lg:block')}>{aside}</div>}
       </div>
 
-      <section>
+      <section className={only('team')}>
         <div className="flex flex-wrap items-center gap-2 mb-3">
           <h2 className="font-display text-2xl font-semibold mr-2 w-full sm:w-auto">Pick from your collection</h2>
           <div className="chip-row w-full sm:w-auto">
@@ -135,8 +145,8 @@ export function PlanEditor({
         </div>
       </section>
 
-      <div className="grid lg:grid-cols-2 gap-4">
-        <Panel>
+      <div className={cn('grid lg:grid-cols-2 gap-4', section !== undefined && section !== 'batting' && section !== 'bowling' && 'hidden lg:grid')}>
+        <Panel className={only('batting')}>
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="font-display text-2xl font-semibold">Batting order</h2>
@@ -173,7 +183,7 @@ export function PlanEditor({
             </DndContext>
           )}
         </Panel>
-        <Panel>
+        <Panel className={only('bowling')}>
           <h2 className="font-display text-2xl font-semibold">Bowling order</h2>
           <p className="text-muted text-sm mb-3">Each bowler bowls exactly 2 overs. The all-rounder bowls 1. Nobody bowls back-to-back overs. Your captain sets the field each over.</p>
           {filled < 7 ? (
@@ -204,15 +214,15 @@ export function PlanEditor({
         </Panel>
       </div>
 
-      <Panel>
+      <Panel className={only('captain')}>
         <h2 className="font-display text-2xl font-semibold flex items-center gap-2"><Crown size={22} className="text-cta" aria-hidden /> Captain</h2>
-        <p className="text-muted text-sm mb-3">
+        <p className="text-muted text-sm mb-3 hidden sm:block">
           Your captain makes every tactical call: how the batters play each over, where the field goes, the toss decision, when to play their masterstroke, and the plan at the innings break unless you choose one yourself.
         </p>
         {filled < 7 ? (
           <p className="text-muted">Pick all seven players to choose a captain.</p>
         ) : (
-          <div role="radiogroup" aria-label="Captain" className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div role="radiogroup" aria-label="Captain" className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
             {squad.map((c) => {
               const cp = c.captaincy
               const on = plan.captainId === c.id
@@ -223,7 +233,7 @@ export function PlanEditor({
                   role="radio"
                   aria-checked={on}
                   onClick={() => set({ captainId: c.id })}
-                  className={cn('text-left rounded-2xl border-2 p-3 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent', on ? 'border-cta bg-cta/10' : 'border-border hover:border-muted')}
+                  className={cn('text-left rounded-2xl border-2 p-2.5 sm:p-3 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent', on ? 'border-cta bg-cta/10' : 'border-border hover:border-muted')}
                 >
                   <div className="flex items-center gap-2.5">
                     <PlayerAvatar name={c.name} rarity={c.rarity} />
@@ -233,9 +243,12 @@ export function PlanEditor({
                     </div>
                     {suggested?.id === c.id && <span className="shrink-0 rounded-md bg-success/15 text-success px-1.5 py-0.5 text-[11px] font-bold">Best pick</span>}
                   </div>
-                  {cp && <div className="mt-2.5"><CaptaincyBars cp={cp} /></div>}
-                  {(c.captainRep ?? 0) > 0 && <p className="text-[11px] text-muted mt-1">Reputation {c.captainRep} · Tactics +{Math.min(10, Math.floor((c.captainRep ?? 0) / 10))}</p>}
-                  {cp && <MasterstrokeLine def={strokes[cp.masterstroke]} />}
+                  {/* Phones: full detail only for the chosen captain, so the list stays short. */}
+                  <div className={cn(!on && 'hidden sm:block')}>
+                    {cp && <div className="mt-2.5"><CaptaincyBars cp={cp} /></div>}
+                    {(c.captainRep ?? 0) > 0 && <p className="text-[11px] text-muted mt-1">Reputation {c.captainRep} · Tactics +{Math.min(10, Math.floor((c.captainRep ?? 0) / 10))}</p>}
+                    {cp && <MasterstrokeLine def={strokes[cp.masterstroke]} />}
+                  </div>
                 </button>
               )
             })}

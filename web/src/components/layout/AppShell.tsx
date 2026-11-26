@@ -69,6 +69,8 @@ export function AppShell() {
   const user = me.data?.user
   const [more, setMore] = useState(false)
   const moreActive = moreLinks.some((l) => loc.pathname.startsWith(l.to))
+  // The live match is full-screen on phones: no bottom nav, so the field fits.
+  const immersive = /^\/match\/[^/]+\/live$/.test(loc.pathname)
 
   function logout() {
     setToken(null)
@@ -121,7 +123,7 @@ export function AppShell() {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="min-h-16 border-b border-border glass flex items-center justify-between gap-3 px-4 sticky top-0 z-20">
+        <header className="min-h-14 sm:min-h-16 border-b border-border glass flex items-center justify-between gap-3 px-3 sm:px-4 sticky top-0 z-20">
           <div className="md:hidden"><Brand /></div>
           <div className="flex items-center gap-2 ml-auto">
             {user && (
@@ -136,7 +138,7 @@ export function AppShell() {
             </button>
           </div>
         </header>
-        <main className="flex-1 w-full max-w-6xl mx-auto px-4 py-6 pb-28 md:pb-10">
+        <main className={cn('flex-1 w-full max-w-6xl mx-auto px-3 sm:px-4 py-3 sm:py-6 md:pb-10', immersive ? 'pb-6' : 'pb-24')}>
           <Outlet />
         </main>
 
@@ -157,13 +159,13 @@ export function AppShell() {
             </button>
           </div>
         )}
-        <nav className="md:hidden fixed bottom-0 inset-x-0 border-t border-border glass grid grid-cols-5 z-40" aria-label="Main">
+        <nav className={cn('md:hidden fixed bottom-0 inset-x-0 border-t border-border glass grid grid-cols-5 z-40 pb-[env(safe-area-inset-bottom)]', immersive && 'hidden')} aria-label="Main">
           {mobile.map((l) => (
             <NavLink
               key={l.to}
               to={l.to}
               end={l.to === '/'}
-              className={({ isActive }) => cn('flex flex-col items-center justify-center gap-0.5 min-h-16 text-base cursor-pointer', isActive ? 'text-accent font-semibold' : 'text-muted')}
+              className={({ isActive }) => cn('flex flex-col items-center justify-center gap-0.5 min-h-14 text-sm cursor-pointer', isActive ? 'text-accent font-semibold' : 'text-muted')}
             >
               <l.icon size={20} aria-hidden />
               {l.label}
@@ -173,7 +175,7 @@ export function AppShell() {
             type="button"
             aria-expanded={more}
             onClick={() => setMore((v) => !v)}
-            className={cn('flex flex-col items-center justify-center gap-0.5 min-h-16 text-base cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent', more || moreActive ? 'text-accent font-semibold' : 'text-muted')}
+            className={cn('flex flex-col items-center justify-center gap-0.5 min-h-14 text-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent', more || moreActive ? 'text-accent font-semibold' : 'text-muted')}
           >
             <Menu size={20} aria-hidden />
             More
