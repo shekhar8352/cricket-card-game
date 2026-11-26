@@ -1,3 +1,4 @@
+import { ArenaBadge } from '../components/trophy/ArenaBadge'
 import { useQuery } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import { Calculator, Clock, Crown, Dice5, Eye, Gauge, Layers, Link2, ListChecks, Lock, Scale, Shield, ShieldAlert, Sparkles, Star, Swords, Trophy, Wind, Zap } from 'lucide-react'
@@ -746,7 +747,38 @@ fielding = 12 × catches + 16 × stumpings + 14 × run-outs
           <h3 className="font-bold">Trophies</h3>
           <Formula>{`change = 30 + (opponent trophies − your trophies) ÷ 20
 kept between 20 and 40, added on a win, taken on a loss, 0 on a tie`}</Formula>
-          <p className="text-sm text-muted mt-2">Arenas: {m.arenas.map((a) => `${a.Name} ${a.MinTrophy}+`).join(' · ')}. Trophies never go below 0.</p>
+          <p className="text-sm text-muted mt-2">Trophies never go below 0. A tie leaves them unchanged.</p>
+        </Panel>
+        <Panel>
+          <h3 className="font-bold">Arenas and divisions</h3>
+          <p className="text-sm text-muted mt-1">
+            {m.arenas.length} arenas, each split into divisions III, II and I ({m.trophyRules.divisions} steps; III is the entry division). The top arena, {m.arenas[m.arenas.length - 1]?.name}, has no divisions.
+          </p>
+          <div className="overflow-x-auto mt-2">
+            <table className="text-sm w-full tabular">
+              <thead><tr className="text-xs uppercase text-muted"><th className="text-left py-1">Arena</th><th className="text-right py-1 px-1">III</th><th className="text-right py-1 px-1">II</th><th className="text-right py-1 px-1">I</th><th className="text-right py-1 px-1">First reach</th></tr></thead>
+              <tbody>
+                {m.arenas.map((a) => {
+                  const steps = m.trophyRules.road.filter((s) => s.arena === a.name)
+                  const at = (d: number) => steps.find((s) => s.division === d)?.minTrophy
+                  return (
+                    <tr key={a.name} className="border-t border-border">
+                      <th scope="row" className="text-left py-1 font-medium"><span className="inline-flex items-center gap-2"><ArenaBadge arena={a.name} size="xs" />{a.name}</span></th>
+                      {steps.length === 1 ? <td colSpan={3} className="text-right px-1">{a.minTrophy.toLocaleString()}+</td> : [3, 2, 1].map((d) => <td key={d} className="text-right px-1">{at(d)?.toLocaleString()}</td>)}
+                      <td className="text-right px-1">{m.trophyRules.milestoneFloor[a.name] ? `${m.trophyRules.milestoneFloor[a.name]}+ card` : '—'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-sm text-muted mt-2">
+            <b className="text-fg">{m.trophyRules.buffer}-trophy buffer.</b> Promotion is instant, but once you reach an arena you keep it (its rank, reward odds and leaderboard) until you drop more than {m.trophyRules.buffer} trophies below its floor. Reach Gold at 800 and you stay in Gold until you fall below 700. Divisions within an arena follow your trophies.
+          </p>
+          <p className="text-sm text-muted mt-2">
+            <b className="text-fg">Milestone cards.</b> The first time you reach an arena (above your personal best) you get one extra card, at least of the rarity shown. Your personal best is kept forever.
+          </p>
+          <p className="text-sm text-muted mt-2">Matchmaking and bot strength follow your trophy count, not the buffer, so a protected player still meets opponents at their level. Above Legend, bots field only Gold and Legend cards, at their level caps, with +3% (Titan), +5% (Mythic) or +7% (Hall of Fame) strength.</p>
         </Panel>
         <Panel>
           <h3 className="font-bold">Rewards</h3>
@@ -756,9 +788,9 @@ kept between 20 and 40, added on a win, taken on a loss, 0 on a tie`}</Formula>
               <thead><tr className="text-xs uppercase text-muted"><th className="text-left py-1">Arena</th>{rarities.map((r) => <th key={r} className="text-right py-1 px-1">{r}</th>)}</tr></thead>
               <tbody>
                 {m.arenas.map((a) => (
-                  <tr key={a.Name} className="border-t border-border">
-                    <th scope="row" className="text-left py-1 font-medium">{a.Name}</th>
-                    {rarities.map((r) => <td key={r} className="text-right px-1 tabular">{p.rewardOdds[a.Name]?.[r]}%</td>)}
+                  <tr key={a.name} className="border-t border-border">
+                    <th scope="row" className="text-left py-1 font-medium">{a.name}</th>
+                    {rarities.map((r) => <td key={r} className="text-right px-1 tabular">{p.rewardOdds[a.name]?.[r]}%</td>)}
                   </tr>
                 ))}
               </tbody>

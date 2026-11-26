@@ -2,7 +2,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { Button } from '../components/ui/button'
-import { EmptyState, Panel, ProgressBar } from '../components/ui/chrome'
+import { EmptyState, Panel } from '../components/ui/chrome'
+import { RankPanel } from '../components/trophy/RankPanel'
 import { PlayerCard } from '../components/card/PlayerCard'
 import { matchPath, statusLabel } from '../lib/labels'
 import { useUI } from '../store/ui'
@@ -22,9 +23,6 @@ export function HomePage() {
   const [busy, setBusy] = useState<'bot' | 'pvp' | null>(null)
   const [err, setErr] = useState('')
   const user = me.data?.user
-  const nextMin = user?.nextArenaMin ?? 400
-  const prevMin = user?.arena === 'Bronze' ? 0 : nextMin > 0 ? Math.max(0, nextMin - 400) : 0
-  const progress = user ? Math.min(100, ((user.trophies - prevMin) / Math.max(1, nextMin - prevMin)) * 100) : 0
   const best = (cards.data ?? []).slice().sort((a, b) => b.overall - a.overall).slice(0, 5)
   const recent = (hist.data ?? []).slice(0, 5)
   // Friendlies stay out of the record, like they do for trophies and streaks.
@@ -33,7 +31,6 @@ export function HomePage() {
   const wins = done.filter((m) => m.winnerUserId === user?.id).length
   const streak = me.data?.streak
   const paused = (hist.data ?? []).filter((m) => m.status === 'INNINGS_BREAK' || m.status === 'SUPER_OVER')
-  const toNext = user?.nextArenaMin != null ? Math.max(0, user.nextArenaMin - user.trophies) : null
 
   async function start(mode: 'bot' | 'pvp') {
     setBusy(mode)
@@ -69,7 +66,7 @@ export function HomePage() {
         <div className="relative z-10 grid lg:grid-cols-[1.2fr_1fr] gap-8 items-center">
           <div>
             <p className="inline-flex items-center gap-2 rounded-full bg-black/25 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-[#ffd166]">
-              <Trophy size={14} aria-hidden /> {user?.arena ?? 'Bronze'} arena
+              <Trophy size={14} aria-hidden /> {user?.arenaRank?.label ?? user?.arena ?? 'Bronze'} · {user?.arena ?? 'Bronze'} arena
             </p>
             <h1 className="font-display text-5xl sm:text-6xl font-bold uppercase leading-[0.95] mt-3">
               {user ? <>Your seven is <span className="text-[#ffd166] text-glow">ready</span></> : 'Loading your club…'}
@@ -91,19 +88,11 @@ export function HomePage() {
             {err && <p className="text-[#ffb4b4] mt-3" role="alert">{err}</p>}
           </div>
           <div className="rounded-2xl bg-black/30 p-5 backdrop-blur-sm border border-white/10">
-            <div className="flex items-end justify-between">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/60">Trophies</p>
-                <p className="font-display text-6xl font-bold tabular leading-none text-[#ffd166]">{user?.trophies ?? '—'}</p>
-              </div>
-              <Trophy size={56} className="text-[#ffd166] drop-shadow-[0_0_18px_rgba(255,209,102,0.5)]" aria-hidden />
-            </div>
-            <div className="mt-4">
-              <ProgressBar value={progress} label={user?.nextArena ? `Progress toward ${user.nextArena}` : 'Arena progress'} />
-              <p className="text-sm text-white/75 mt-2">
-                {user?.nextArena && toNext != null ? <><b className="text-white">{toNext}</b> trophies to unlock <b className="text-white">{user.nextArena}</b></> : 'You are in the top arena. Defend your spot!'}
-              </p>
-            </div>
+            {user?.arenaRank ? (
+              <RankPanel rank={user.arenaRank} best={user.bestTrophies} compact />
+            ) : (
+              <p className="font-display text-6xl font-bold tabular leading-none text-[#ffd166]">{user?.trophies ?? '—'}</p>
+            )}
             <div className="grid grid-cols-3 gap-2 mt-4 text-center">
               {[
                 ['Played', String(played)],

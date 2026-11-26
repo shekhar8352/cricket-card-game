@@ -11,7 +11,8 @@ import { ratingBand } from '../lib/ratings'
 import { STAGE_LABEL } from '../lib/labels'
 import { RatingBadge } from '../components/card/RatingBadge'
 import { PlayerAvatar } from '../components/card/PlayerAvatar'
-import type { PlayerCard as Card } from '../types/engine'
+import type { PlayerCard as Card, ResultExtras } from '../types/engine'
+import { ArenaBadge } from '../components/trophy/ArenaBadge'
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
 export function ResultPage() {
@@ -147,6 +148,7 @@ export function ResultPage() {
             <span className="sr-only">{trophy}</span>
           </div>
           )}
+          {!friendly && <RankChange ex={ex} side={yourSide} />}
           <div className="grid grid-cols-2 gap-3 max-w-md mx-auto mt-6">
             {res.innings.map((inn, i) => (
               <div key={i} className="rounded-2xl bg-black/25 border border-white/10 px-3 py-3">
@@ -331,5 +333,37 @@ function Performer({ label, Icon, card, line, highlight }: { label: string; Icon
         <p className="text-muted tabular">{line}</p>
       </div>
     </Panel>
+  )
+}
+
+/** Rank change after a ranked match: promotion, demotion, buffer protection, new best, milestone cards. */
+function RankChange({ ex, side }: { ex?: ResultExtras; side: string }) {
+  const after = ex?.rankAfter?.[side]
+  const before = ex?.rankBefore?.[side]
+  if (!after || !before) return null
+  const move = ex?.rankMove?.[side] ?? ''
+  const arenaUp = after.arenaIndex > before.arenaIndex
+  const arenas = ex?.newArenas?.[side] ?? []
+  const line =
+    move === 'up'
+      ? arenaUp ? `Promoted to ${after.arena} arena · ${after.label}` : `Up to ${after.label}`
+      : move === 'down'
+        ? after.arenaIndex < before.arenaIndex ? `Dropped to ${after.arena} arena · ${after.label}` : `Down to ${after.label}`
+        : move === 'protected'
+          ? `${after.arena} arena protected until you drop below ${after.demoteBelow.toLocaleString()}`
+          : after.label
+  return (
+    <div className="mt-3 flex flex-col items-center gap-2">
+      <p className={cn('inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-semibold', move === 'up' ? 'bg-white/20' : 'bg-black/25')}>
+        <ArenaBadge arena={after.arena} division={after.division} size="xs" />
+        {line}
+      </p>
+      {(ex?.newBest?.[side] || arenas.length > 0) && (
+        <p className="text-sm text-white/85">
+          {ex?.newBest?.[side] && <b className="text-[#ffd166]">New personal best!</b>}
+          {arenas.length > 0 && <> First time in {arenas.join(' and ')}: milestone card{arenas.length > 1 ? 's' : ''} added to your rewards below.</>}
+        </p>
+      )}
+    </div>
   )
 }

@@ -1,9 +1,13 @@
+import { ArenaBadge } from '../components/trophy/ArenaBadge'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { Choice, EmptyState, PageHeader, Panel } from '../components/ui/chrome'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
+
+/** Division number from a label like "Gold II" (0 for the top arena). */
+const divisionOf = (label?: string) => (label?.endsWith(' III') ? 3 : label?.endsWith(' II') ? 2 : label?.endsWith(' I') ? 1 : 0)
 
 export function LeaderboardPage() {
   const me = useQuery({ queryKey: ['me'], queryFn: api.me })
@@ -42,6 +46,7 @@ export function LeaderboardPage() {
                 <th scope="col" className="px-2 sm:px-4 py-3 font-medium">Player</th>
                 <th scope="col" className="hidden sm:table-cell px-4 py-3 font-medium">Arena</th>
                 <th scope="col" className="px-3 sm:px-4 py-3 font-medium text-right sm:text-left">Trophies</th>
+                <th scope="col" className="hidden md:table-cell px-4 py-3 font-medium">Best</th>
               </tr>
             </thead>
             <tbody>
@@ -56,10 +61,19 @@ export function LeaderboardPage() {
                       {r.username}{r.me ? ' (you)' : ''}
                       <ChevronRight size={15} className="shrink-0 text-muted group-hover:text-accent" aria-hidden />
                     </Link>
-                    <span className="sm:hidden block text-xs text-muted">{r.arena} arena</span>
+                    <span className="sm:hidden mt-0.5 flex items-center gap-1.5 text-xs text-muted"><ArenaBadge arena={r.arena} division={divisionOf(r.division)} size="xs" />{r.division ?? r.arena}</span>
                   </td>
-                  <td className="hidden sm:table-cell px-4 py-3">{r.arena}</td>
-                  <td className="px-3 sm:px-4 py-3 tabular font-semibold text-right sm:text-left">{r.trophies}</td>
+                  <td className="hidden sm:table-cell px-4 py-3">
+                    <span className="inline-flex items-center gap-2">
+                      <ArenaBadge arena={r.arena} division={divisionOf(r.division)} size="sm" />
+                      <span>
+                        <span className="block font-semibold leading-tight">{r.division ?? r.arena}</span>
+                        <span className="block text-xs text-muted">{r.protected ? 'Protected by buffer' : `${r.arena} arena`}</span>
+                      </span>
+                    </span>
+                  </td>
+                  <td className="px-3 sm:px-4 py-3 tabular font-semibold text-right sm:text-left">{r.trophies.toLocaleString()}</td>
+                  <td className="hidden md:table-cell px-4 py-3 tabular text-muted">{r.best != null ? r.best.toLocaleString() : '—'}</td>
                 </tr>
               ))}
             </tbody>

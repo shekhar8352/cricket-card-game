@@ -10,7 +10,7 @@ import { cn } from '../lib/cn'
 const perks = [
   { Icon: Gift, text: 'Free starter pack of 10 player cards' },
   { Icon: Zap, text: '5-over matches. Done in about two minutes.' },
-  { Icon: Trophy, text: 'Climb from Bronze to Legend arenas' },
+  { Icon: Trophy, text: 'Climb 25 divisions from Bronze to the Hall of Fame' },
 ]
 
 const glow = { Bronze: '#e8c99b', Gold: '#f6c445', Legend: '#c4b5fd' }

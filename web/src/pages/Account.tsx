@@ -1,10 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useState, type ReactNode } from 'react'
-import { Award, CalendarDays, Crown, Flame, Hand, LogOut, Medal, Shield, Target, Trophy, Zap } from 'lucide-react'
+import { Award, CalendarDays, Crown, Flame, Hand, LogOut, Medal, Target, TrendingUp, Trophy, Zap } from 'lucide-react'
+import { ArenaBadge } from '../components/trophy/ArenaBadge'
+import { RankPanel } from '../components/trophy/RankPanel'
+import { TrophyRoad } from '../components/trophy/TrophyRoad'
+import { TrophyHistoryChart } from '../components/trophy/TrophyHistoryChart'
+import type { ArenaRank } from '../types/engine'
 import { api, setToken } from '../api/client'
 import { Button } from '../components/ui/button'
-import { Choice, EmptyState, Panel, ProgressBar } from '../components/ui/chrome'
+import { Choice, EmptyState, Panel } from '../components/ui/chrome'
 import { PlayerCard } from '../components/card/PlayerCard'
 import { PlayerAvatar } from '../components/card/PlayerAvatar'
 import { RatingBadge } from '../components/card/RatingBadge'
@@ -30,8 +35,6 @@ export function AccountPage() {
   if (q.isError || !q.data) return <EmptyState title="Couldn’t load your account" body={(q.error as Error)?.message ?? 'Please try again.'} action={<Button onClick={() => q.refetch()}>Retry</Button>} />
 
   const { account: a, collection } = q.data
-  const prevMin = a.arena === 'Bronze' ? 0 : a.nextArenaMin ? Math.max(0, a.nextArenaMin - 400) : 0
-  const progress = a.nextArenaMin ? ((a.trophies - prevMin) / Math.max(1, a.nextArenaMin - prevMin)) * 100 : 100
 
   return (
     <div className="space-y-6">
@@ -47,22 +50,19 @@ export function AccountPage() {
               <h1 className="font-display text-4xl sm:text-5xl font-bold uppercase leading-none truncate">{a.username}</h1>
               <p className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-white/75 text-sm">
                 <span className="inline-flex items-center gap-1.5"><CalendarDays size={15} aria-hidden /> Joined {date(a.createdAt)}</span>
-                <span className="inline-flex items-center gap-1.5"><Shield size={15} aria-hidden /> {a.arena} arena</span>
+                <span className="inline-flex items-center gap-1.5"><ArenaBadge arena={a.arena} division={a.arenaRank?.division} size="xs" /> {a.arenaRank?.label ?? a.arena} · {a.arena} arena</span>
               </p>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3 lg:w-[26rem]">
-            <HeroStat label="Trophies" value={String(a.trophies)} icon={<Trophy size={18} aria-hidden />} gold />
+          <div className="grid grid-cols-3 gap-3 lg:w-[30rem]">
+            <HeroStat label="Trophies" value={a.trophies.toLocaleString()} icon={<Trophy size={18} aria-hidden />} gold />
+            <HeroStat label="Personal best" value={(a.bestTrophies ?? a.trophies).toLocaleString()} sub={a.bestRank?.label} icon={<TrendingUp size={18} aria-hidden />} />
             <HeroStat label="Global rank" value={`#${a.rank}`} sub={`of ${a.totalPlayers} players`} icon={<Medal size={18} aria-hidden />} />
-            <div className="col-span-2">
-              <ProgressBar value={progress} label={a.nextArena ? `Progress toward ${a.nextArena}` : 'Arena progress'} />
-              <p className="text-sm text-white/75 mt-1.5">
-                {a.nextArena && a.nextArenaMin ? <><b className="text-white">{Math.max(0, a.nextArenaMin - a.trophies)}</b> trophies to {a.nextArena}</> : 'Top arena reached'}
-              </p>
-            </div>
           </div>
         </div>
       </section>
+
+      {a.arenaRank && <TrophySection rank={a.arenaRank} />}
 
       <CareerSections
         data={q.data}
@@ -376,5 +376,31 @@ function StatTable({ data, tab }: { data: AccountStats; tab: Tab }) {
         </tbody>
       </table>
     </div>
+  )
+}
+
+/** Arena rank, the trophy road and the trophy history chart. */
+function TrophySection({ rank }: { rank: ArenaRank }) {
+  const t = useQuery({ queryKey: ['me', 'trophies'], queryFn: api.myTrophies })
+  const model = useQuery({ queryKey: ['engine-model'], queryFn: api.engineModel, staleTime: Infinity })
+  return (
+    <section aria-labelledby="trophies-h" className="space-y-3">
+      <SectionTitle id="trophies-h">Trophy road</SectionTitle>
+      <div className="grid lg:grid-cols-[22rem_1fr] gap-3">
+        <div className="hero-stadium rounded-2xl p-5 text-white">
+          <div className="relative z-10"><RankPanel rank={rank} best={t.data?.best} /></div>
+        </div>
+        <Panel className="min-w-0">
+          <h3 className="font-display text-xl font-bold uppercase">Trophies over time</h3>
+          <p className="text-sm text-muted mb-2">After each ranked match. Lines mark arena floors.</p>
+          {t.data && model.data ? <TrophyHistoryChart data={t.data} arenas={model.data.arenas} /> : <p className="text-muted">Loading…</p>}
+        </Panel>
+      </div>
+      {t.data && (
+        <Panel className="min-w-0">
+          <TrophyRoad road={t.data.road} trophies={t.data.rank.trophies} arena={t.data.rank.arena} best={t.data.best} milestoneFloor={model.data?.trophyRules.milestoneFloor} />
+        </Panel>
+      )}
+    </section>
   )
 }
