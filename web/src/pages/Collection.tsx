@@ -81,7 +81,7 @@ export function CollectionPage() {
           action={filtersOn ? <Button variant="outline" onClick={() => { setRole(''); setRarity(''); setSearch('') }}>Clear filters</Button> : undefined}
         />
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4">
           {list.map(({ card, n }) => (
             <div key={card.id} className="relative">
               <PlayerCard card={card} className="w-full max-w-none" onClick={() => setSel(card)} />

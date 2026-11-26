@@ -1,3 +1,4 @@
+import { MobileTabs } from '../components/ui/MobileTabs'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useState, type ReactNode } from 'react'
@@ -25,6 +26,8 @@ const date = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day:
 export function AccountPage() {
   const nav = useNavigate()
   const q = useQuery({ queryKey: ['me', 'stats'], queryFn: api.myStats })
+  const [section, setSection] = useState<'trophies' | 'career' | 'collection'>('trophies')
+  const only = (k: typeof section) => (section === k ? '' : 'hidden lg:block')
 
   function logout() {
     setToken(null)
@@ -62,8 +65,20 @@ export function AccountPage() {
         </div>
       </section>
 
-      {a.arenaRank && <TrophySection rank={a.arenaRank} />}
+      <MobileTabs
+        label="Account"
+        value={section}
+        onChange={setSection}
+        tabs={[
+          { key: 'trophies', label: 'Trophies' },
+          { key: 'career', label: 'Career' },
+          { key: 'collection', label: 'Collection' },
+        ]}
+      />
 
+      {a.arenaRank && <div className={only('trophies')}><TrophySection rank={a.arenaRank} /></div>}
+
+      <div className={only('career')}>
       <CareerSections
         data={q.data}
         onOpenMatch={(id) => nav(`/match/${id}/result`)}
@@ -75,10 +90,13 @@ export function AccountPage() {
           />
         }
       />
+      </div>
 
-      <CollectionSummary collection={collection} onView={() => nav('/collection')} />
+      <div className={only('collection')}>
+        <CollectionSummary collection={collection} onView={() => nav('/collection')} />
+      </div>
 
-      <div className="flex justify-end">
+      <div className={cn('flex justify-end', section !== 'collection' && 'hidden lg:flex')}>
         <Button variant="outline" onClick={logout}><LogOut size={16} aria-hidden /> Log out</Button>
       </div>
     </div>

@@ -450,15 +450,22 @@ body {
 
 /* Filter chips: one swipeable row on phones, wrapping rows from sm up. */
 .chip-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.chip-row > * { flex-shrink: 0; }
 @media (max-width: 639px) {
   .chip-row {
     flex-wrap: nowrap;
     overflow-x: auto;
-    margin-inline: -1rem;
-    padding-inline: 1rem;
+    /* Bleed to the screen edge: matches the page's 0.75rem phone gutter. */
+    margin-inline: -0.75rem;
+    padding-inline: 0.75rem;
     scrollbar-width: none;
-    scroll-padding-inline: 1rem;
+    scroll-padding-inline: 0.75rem;
   }
   .chip-row::-webkit-scrollbar { display: none; }
   .felt-tray { padding: 10px; border-radius: 14px; }
 }
+
+/* A single row of chips that swipes sideways instead of wrapping (no layout shift). */
+.chip-scroll { scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.chip-scroll::-webkit-scrollbar { display: none; }
+.chip-scroll > * { flex-shrink: 0; white-space: nowrap; }

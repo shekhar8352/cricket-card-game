@@ -4,12 +4,12 @@ import { cn } from '../../lib/cn'
 export const controlClass =
   'min-h-11 rounded-xl border border-border bg-card px-3 text-base text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg'
 
-export function PageHeader({ title, lede, action }: { title: string; lede?: string; action?: ReactNode }) {
+export function PageHeader({ title, lede, action }: { title: string; lede?: ReactNode; action?: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
+    <div className="flex flex-wrap items-end justify-between gap-3 sm:gap-4 mb-3 sm:mb-6">
       <div className="max-w-2xl">
-        <h1 className="font-display text-4xl sm:text-5xl font-bold uppercase tracking-tight">{title}</h1>
-        {lede && <p className="mt-1 text-base text-muted leading-relaxed">{lede}</p>}
+        <h1 className="font-display text-3xl sm:text-5xl font-bold uppercase tracking-tight">{title}</h1>
+        {lede && <p className="mt-1 text-sm sm:text-base text-muted leading-relaxed">{lede}</p>}
       </div>
       {action}
     </div>

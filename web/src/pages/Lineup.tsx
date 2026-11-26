@@ -8,7 +8,10 @@ import { PlayerCard } from '../components/card/PlayerCard'
 import { Button } from '../components/ui/button'
 import { PageHeader, Panel } from '../components/ui/chrome'
 import { ScoutingPanel } from '../components/match/MatchPlan'
-import { PlanEditor } from '../components/match/PlanEditor'
+import { PlanEditor, type PlanSection } from '../components/match/PlanEditor'
+import { PlanSummary } from '../components/match/PlanSummary'
+import { MobileTabs } from '../components/ui/MobileTabs'
+import { cn } from '../lib/cn'
 import { WaitingRoom } from '../components/match/WaitingRoom'
 import { compareForm } from '../lib/ratings'
 import { bestTeam, emptyPlan, placeInSlots, planErrors, planFromDefault, samePlan, toRequest, withTeam, type MatchPlan } from '../lib/plan'
@@ -38,6 +41,7 @@ export function LineupPage() {
   const [note, setNote] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState<'lock' | 'save' | null>(null)
+  const [tab, setTab] = useState<'summary' | 'scout' | PlanSection>('summary')
 
   const all = useMemo(() => cardsQ.data ?? [], [cardsQ.data])
   const byId = useMemo(() => Object.fromEntries(all.map((c) => [c.id, c])), [all])
@@ -104,19 +108,36 @@ export function LineupPage() {
   }
 
   const youLocked = (match.data?.youAreHome ? match.data?.homeLineup : match.data?.awayLineup)?.locked
+  const fillTools = (
+    <div className="chip-row">
+      {saved && <Button variant="outline" disabled={!changedFromDefault} onClick={() => { setPlan(null); setNote('Back to your default.') }}><RotateCcw size={16} aria-hidden /> Load my default</Button>}
+      <Button variant="outline" onClick={() => fill('overall')}>Fill best rated</Button>
+      <Button variant="outline" onClick={() => fill('form')} title="Picks by average match rating. Cards that haven't played yet come after, by overall.">Fill in-form 7</Button>
+    </div>
+  )
+  const problem = squadErr ?? bowlErr ?? null
+  const planTab: PlanSection | null = tab === 'summary' || tab === 'scout' ? null : tab
 
   return (
-    <div className="space-y-6 pb-28">
+    <div className="space-y-4 lg:space-y-6 pb-24 lg:pb-28">
       <PageHeader
         title="Set your lineup"
-        lede={`vs ${match.data?.opponent.name ?? 'opponent'}${match.data?.opponent.trophies != null ? ` · ${match.data.opponent.trophies} trophies` : ''}. Check the pitch and their captain, pick your captain and orders, then lock in.`}
-        action={
-          <div className="flex flex-wrap gap-2">
-            {saved && <Button variant="outline" disabled={!changedFromDefault} onClick={() => { setPlan(null); setNote('Back to your default.') }}><RotateCcw size={16} aria-hidden /> Load my default</Button>}
-            <Button variant="outline" onClick={() => fill('overall')}>Fill best rated</Button>
-            <Button variant="outline" onClick={() => fill('form')} title="Picks by average match rating. Cards that haven't played yet come after, by overall.">Fill in-form 7</Button>
-          </div>
-        }
+        lede={<>vs {match.data?.opponent.name ?? 'opponent'}{match.data?.opponent.trophies != null ? ` · ${match.data.opponent.trophies} trophies` : ''}<span className="hidden sm:inline">. Check the pitch and their captain, pick your captain and orders, then lock in.</span></>}
+        action={<div className="hidden lg:block">{fillTools}</div>}
+      />
+
+      <MobileTabs
+        label="Lineup"
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { key: 'summary', label: 'Summary' },
+          { key: 'team', label: 'Team', badge: current.picked.filter(Boolean).length < 7 ? `${current.picked.filter(Boolean).length}/7` : null, warn: !!squadErr },
+          { key: 'batting', label: 'Batting' },
+          { key: 'bowling', label: 'Bowling', badge: bowlErr ? '!' : null, warn: !!bowlErr },
+          { key: 'captain', label: 'Captain' },
+          { key: 'scout', label: 'Scout' },
+        ]}
       />
 
       {match.data?.mode === 'tournament' && match.data.tournamentId && (
@@ -141,7 +162,7 @@ export function LineupPage() {
       )}
 
       {ready && saved && !changedFromDefault && (
-        <div className="flex items-center gap-3 rounded-2xl border border-accent/50 bg-accent/10 px-4 py-3">
+        <div className="hidden lg:flex items-center gap-3 rounded-2xl border border-accent/50 bg-accent/10 px-4 py-3">
           <Sparkles size={20} className="text-accent shrink-0" aria-hidden />
           <p>Your default team, captain and orders are loaded. Adjust for this pitch and opponent, or lock in as is.</p>
         </div>
@@ -150,7 +171,25 @@ export function LineupPage() {
         <p className="text-sm text-muted">Tip: save a default in <Link className="underline" to="/squad">Squad &amp; strategy</Link> and every match will start from it.</p>
       )}
 
-      <ScoutingPanel pitch={match.data?.pitch} captain={match.data?.opponentCaptain} oppCards={opp?.cards ?? []} myCards={all} rivalries={match.data?.rivalries} />
+      {ready && tab === 'summary' && (
+        <div className="lg:hidden">
+          <PlanSummary plan={current} byId={byId} pitch={match.data?.pitch} oppCaptain={match.data?.opponentCaptain} problem={problem} onEdit={setTab} />
+        </div>
+      )}
+
+      <div className={cn(tab !== 'scout' && 'hidden lg:block')}>
+        <ScoutingPanel pitch={match.data?.pitch} captain={match.data?.opponentCaptain} oppCards={opp?.cards ?? []} myCards={all} rivalries={match.data?.rivalries} />
+      </div>
+      {tab === 'scout' && (
+        <Panel className="lg:hidden">
+          <h2 className="font-display text-2xl font-semibold">Opponent</h2>
+          <p className="text-muted text-sm mb-3">Their cards show after they lock in. Batting and bowling orders stay hidden.</p>
+          <div className="flex flex-wrap gap-2">
+            {(opp?.cards ?? []).map((c) => <PlayerCard key={c.id} card={c} size="sm" />)}
+            {!opp?.cards?.length && <p className="text-muted">Waiting for their lineup.</p>}
+          </div>
+        </Panel>
+      )}
 
       {ready ? (
         <PlanEditor
@@ -158,6 +197,8 @@ export function LineupPage() {
           plan={current}
           onChange={(p) => { setPlan(p); setNote('') }}
           pitch={match.data?.pitch}
+          section={planTab}
+          teamTools={fillTools}
           aside={
             <Panel>
               <h2 className="font-display text-2xl font-semibold">Opponent</h2>
@@ -173,13 +214,13 @@ export function LineupPage() {
         <p className="text-muted">Loading your cards…</p>
       )}
 
-      <div className="fixed bottom-16 md:bottom-0 inset-x-0 md:left-60 z-30 glass border-t border-border">
-        <div className="max-w-6xl mx-auto flex flex-wrap items-center gap-3 px-4 py-3">
-          <Button disabled={!ok || !!busy || youLocked} onClick={lock}>{busy === 'lock' ? 'Locking in…' : youLocked ? 'Locked in' : 'Lock in lineup'}</Button>
-          <Button variant="outline" disabled={!ok || !!busy || (!!saved && !changedFromDefault)} onClick={saveDefault}>
-            <Save size={16} aria-hidden /> {busy === 'save' ? 'Saving…' : 'Save as my default'}
+      <div className="fixed bottom-[calc(3.5rem+env(safe-area-inset-bottom))] md:bottom-0 inset-x-0 md:left-60 z-30 glass border-t border-border">
+        <div className="max-w-6xl mx-auto flex flex-wrap items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3">
+          <Button className="flex-1 sm:flex-none" disabled={!ok || !!busy || youLocked} onClick={lock}>{busy === 'lock' ? 'Locking in…' : youLocked ? 'Locked in' : 'Lock in lineup'}</Button>
+          <Button variant="outline" disabled={!ok || !!busy || (!!saved && !changedFromDefault)} onClick={saveDefault} aria-label="Save as my default">
+            <Save size={16} aria-hidden /> <span className="hidden sm:inline">{busy === 'save' ? 'Saving…' : 'Save as my default'}</span>
           </Button>
-          <p className="text-sm text-muted">
+          <p className="hidden sm:block text-sm text-muted">
             {squadErr ?? bowlErr ?? (changedFromDefault ? 'Changed from your default.' : saved ? 'Using your default.' : 'Ready to lock in.')}
           </p>
           {note && <p className="text-sm text-success" role="status">{note}</p>}
