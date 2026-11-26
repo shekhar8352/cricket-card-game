@@ -61,9 +61,9 @@ func Generate(seed int64, userTrophies int, catalog []engine.Card) Deck {
 		}
 		used[c.PlayerID] = true
 		c.ID = uuid.NewString()
-		c.Level = levelForArena(arena.Name, rng)
-		// ±5% strength jitter via level clamp already; nudge attrs
-		jitter := 1 + (rng.Float64()*0.10 - 0.05)
+		c.Level = min(levelForArena(arena.Name, rng), engine.LevelCap(c.Rarity)) // same caps as players' cards
+		// ±5% strength jitter, on top of the arena's strength boost.
+		jitter := ArenaBoost(arena.Name) + (rng.Float64()*0.10 - 0.05)
 		c.Attrs = scaleAttrs(c.Attrs, jitter)
 		picked = append(picked, c)
 	}
@@ -121,8 +121,24 @@ func bowlingPlan(cards []engine.Card, rng *rand.Rand) []string {
 	return []string{other.ID, death.ID, other.ID, ar.ID, death.ID}
 }
 
+// ArenaBoost scales bot attributes in the arenas above Legend, where card
+// levels are already at their caps: +3% Titan, +5% Mythic, +7% Hall of Fame.
+func ArenaBoost(arena string) float64 {
+	switch arena {
+	case "Titan":
+		return 1.03
+	case "Mythic":
+		return 1.05
+	case "Hall of Fame":
+		return 1.07
+	}
+	return 1
+}
+
 func rarityOK(r engine.Rarity, arena string) bool {
 	switch arena {
+	case "Titan", "Mythic", "Hall of Fame":
+		return r == engine.RarityGold || r == engine.RarityLegend
 	case "Bronze":
 		return r == engine.RarityBronze || r == engine.RaritySilver
 	case "Silver":
@@ -146,8 +162,12 @@ func levelForArena(arena string, rng *rand.Rand) int {
 		return 4 + rng.Intn(4)
 	case "Champion":
 		return 5 + rng.Intn(4)
-	default:
+	case "Legend":
 		return 6 + rng.Intn(5)
+	case "Titan":
+		return 7 + rng.Intn(5)
+	default: // Mythic, Hall of Fame
+		return 8 + rng.Intn(5)
 	}
 }
 

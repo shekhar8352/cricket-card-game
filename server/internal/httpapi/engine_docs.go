@@ -64,6 +64,16 @@ func (s *Server) engineModel(w http.ResponseWriter, r *http.Request) {
 		},
 		"traits": engine.TraitCatalog,
 		"arenas": trophy.Arenas,
+		"trophyRules": map[string]any{
+			"buffer": trophy.Buffer, "divisions": trophy.Divisions, "road": trophy.Road(),
+			"milestoneFloor": func() map[string]string {
+				out := map[string]string{}
+				for _, a := range trophy.Arenas[1:] {
+					out[a.Name] = string(cards.MilestoneFloor(a.Name))
+				}
+				return out
+			}(),
+		},
 		"progression": map[string]any{
 			"rewardCardsPerWin": match.RewardCardsPerWin,
 			"rewardOdds":        rewardOdds,

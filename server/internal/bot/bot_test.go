@@ -26,3 +26,24 @@ func TestGenerateArenaScaling(t *testing.T) {
 		t.Log("levels may overlap; ok")
 	}
 }
+
+func TestTopArenaBotsAreStronger(t *testing.T) {
+	cat := seedcatalog.All()
+	avg := func(trophies int) float64 {
+		sum, n := 0, 0
+		for seed := int64(1); seed <= 40; seed++ {
+			for _, c := range Generate(seed, trophies, cat).Lineup.Cards {
+				if c.Level > engine.LevelCap(c.Rarity) {
+					t.Fatalf("bot card %s level %d above its %s cap", c.Name, c.Level, c.Rarity)
+				}
+				sum += engine.Overall(c)
+				n++
+			}
+		}
+		return float64(sum) / float64(n)
+	}
+	legend, titan, hof := avg(2600), avg(3300), avg(5200)
+	if !(legend < titan && titan < hof) {
+		t.Fatalf("bot strength should climb with the arena: Legend %.1f, Titan %.1f, Hall of Fame %.1f", legend, titan, hof)
+	}
+}
