@@ -455,7 +455,8 @@ export interface EngineModel {
     levelBonus: number
     levelCaps: Record<Rarity, number>
     performanceXP: { min: number; perPoint: number; fromRating: number }
-    sacrificeXP: Record<Rarity, { other: number; samePlayer: number }>
+    /** Sacrifice XP: base x growth^(overall - from) x affinity[sacrificed role][target role], at least min; copies use sameMult instead of affinity. */
+    sacrificeXP: { base: number; from: number; growth: number; min: number; sameMult: number; affinity: Record<Role, Record<Role, number>> }
     maxSacrifices: number
   }
   ratings: RatingRules

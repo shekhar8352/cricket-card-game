@@ -1,3 +1,4 @@
+import { sacrificeXP } from '../lib/training'
 import { ArenaBadge } from '../components/trophy/ArenaBadge'
 import { useQuery } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
@@ -800,7 +801,7 @@ kept between 20 and 40, added on a win, taken on a loss, 0 on a tie`}</Formula>
         <Panel>
           <h3 className="font-bold">Experience and levels</h3>
           <p className="text-sm text-muted mt-1">
-            Every card that plays earns performance XP from its match rating (see <a className="underline" href="#ratings">Match ratings &amp; XP</a>). A loss or tie adds +{p.lossXP} XP on top. Training gives XP by sacrificing cards: {rarities.map((r) => `${r} ${p.sacrificeXP[r]?.other}`).join(', ')} XP, or 3× for a copy of the same player, up to {p.maxSacrifices} cards at a time. Cards in your saved squad can’t be sacrificed.
+            Every card that plays earns performance XP from its match rating (see <a className="underline" href="#ratings">Match ratings &amp; XP</a>). A loss or tie adds +{p.lossXP} XP on top. Training gives XP by sacrificing cards. The amount follows the sacrificed card’s overall rating on a steep curve ({p.sacrificeXP.base} XP at {p.sacrificeXP.from}, +{Math.round((p.sacrificeXP.growth - 1) * 100)}% per point, at least {p.sacrificeXP.min}), then its role: a card of the same role gives {p.sacrificeXP.affinity.BAT.BAT}×, a related role (batter and keeper, or an all-rounder with either) {p.sacrificeXP.affinity.BAT.WK}×, an unrelated one {p.sacrificeXP.affinity.BAT.BOWL}×. So a batter rated 65 feeds a batter {sacrificeXP(65, 'BAT', 'BAT', false, p)} XP, a bowler rated 65 only {sacrificeXP(65, 'BOWL', 'BAT', false, p)}, and an 85-rated batter {sacrificeXP(85, 'BAT', 'BAT', false, p)}. A copy of the same player gives {p.sacrificeXP.sameMult}× instead. up to {p.maxSacrifices} cards at a time. Cards in your saved squad can’t be sacrificed.
             Reaching the next level takes level × {p.xpPerLevel} XP, and each level adds +{p.levelBonus} to the attributes that matter for that card’s role.
             Level caps: {rarities.map((r) => `${r} ${p.levelCaps[r]}`).join(', ')}. XP past the cap is not kept; training shows how much would be wasted before you confirm.
           </p>
