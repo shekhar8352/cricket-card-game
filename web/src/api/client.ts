@@ -1,12 +1,14 @@
 import type { SavedDefault } from '../lib/plan'
 import type { AccountStats, PublicProfile, EngineModel, LeaderRow, MatchDTO, OddsRequest, OddsResult, PlayerCard, Streak, SuperOverPicks, Tournament, TournamentSummary, TrainResult, TrophyProgress, User } from '../types/engine'
 
-/** Before a match the player picks only the seven, the captain and the orders. */
+/** Before a match the player picks the seven, the captain, the orders and a game plan for each discipline. */
 export interface LineupBody {
   cardIds: string[]
   battingOrder: string[]
   bowlingPlan: string[]
   captainId: string
+  batPlan?: string
+  bowlPlan?: string
 }
 
 const TOKEN_KEY = 'ccg_token'
