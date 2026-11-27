@@ -99,6 +99,7 @@ func (s *Server) engineModel(w http.ResponseWriter, r *http.Request) {
 		"captain":       engine.Captain,
 		"masterstrokes": engine.Masterstrokes,
 		"breakCalls":    engine.BreakCalls,
+		"plans":         map[string]any{"chaseOverrideRRR": engine.ChaseOverrideRRR},
 		"conditions":    engine.ConditionsList,
 		"chemistry":     engine.Chemistry,
 		"powerplay": map[string]any{

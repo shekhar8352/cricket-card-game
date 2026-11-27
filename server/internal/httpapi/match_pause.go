@@ -75,12 +75,20 @@ func (s *Server) pauseDTO(m store.MatchRow, lus []store.LineupRow, viewer store.
 	}
 	if m.Status == match.StatusBreak {
 		var opts []engine.BreakCallDef
+		want := "bowl"
+		if fi.RoleOf(side) == "chase" {
+			want = "bat"
+		}
 		for _, d := range engine.BreakCalls {
-			if d.Side == fi.RoleOf(side) {
+			if d.Side == want {
 				opts = append(opts, d)
 			}
 		}
 		out["options"] = opts
+		// The plan picked before the match for this side, which carries on by default.
+		if plan := map[string]string{"bat": mine.BatPlan, "bowl": mine.BowlPlan}[want]; plan != "" {
+			out["currentPlan"] = plan
+		}
 		if cap := engine.CaptainOf(lu); cap != nil {
 			out["suggested"] = engine.SuggestBreakCall(m.Seed, *cap, fi.RoleOf(side), fi.Target(), engine.PitchByCode(fi.Pitch).Par)
 		}

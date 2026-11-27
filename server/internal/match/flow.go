@@ -195,6 +195,10 @@ func (s *Service) trySimulate(ctx context.Context, matchID uuid.UUID) error {
 	if err != nil {
 		return err
 	}
+	if m.IsBot {
+		// The bot's captain picks its game plans from personality.
+		away.BatPlan, away.BowlPlan = engine.AutoPlans(m.Seed, away)
+	}
 	fi, err := engine.SimulateFirstInnings(m.Seed, home, away, engine.TossResult{})
 	if err != nil {
 		_, _ = s.Store.TransitionStatus(ctx, m.ID, StatusSimulating, StatusLineup)
@@ -227,7 +231,7 @@ func breakState(m store.MatchRow) (engine.FirstInnings, error) {
 
 // BreakReq is a player's call at the innings break.
 type BreakReq struct {
-	Call         string   `json:"call"`         // engine.BreakCall code, or "captain"
+	Call         string   `json:"call"`         // engine.BreakCall code; "captain" for the AI; "" keeps the pre-match plan
 	BattingOrder []string `json:"battingOrder"` // chasing side only, optional
 	BowlingPlan  []string `json:"bowlingPlan"`  // defending side only, optional
 }
@@ -255,7 +259,14 @@ func (s *Service) SubmitBreak(ctx context.Context, user store.User, matchID uuid
 	role := fi.RoleOf(side)
 	call := engine.BreakCall(req.Call)
 	if call == "" {
-		call = engine.CallCaptain
+		// No new call: keep the plan chosen before the match for this side.
+		call = engine.BreakCall(row.BowlPlan)
+		if role == "chase" {
+			call = engine.BreakCall(row.BatPlan)
+		}
+		if engine.ValidateBreakCall(call, role) != nil || call == "" {
+			call = engine.CallCaptain
+		}
 	}
 	if err := engine.ValidateBreakCall(call, role); err != nil {
 		return err
@@ -281,10 +292,6 @@ func (s *Service) SubmitBreak(ctx context.Context, user store.User, matchID uuid
 		if err := engine.ValidateLineup(lu); err != nil {
 			return err
 		}
-	}
-	if call == engine.CallCaptain {
-		lu, _ := lineupFromRow(*row)
-		call = engine.AutoBreakCall(m.Seed, lu, fi, side)
 	}
 	if err := s.Store.SetBreakDecision(ctx, m.ID, row.UserID, string(call), parseIDs(order)); err != nil {
 		return err
@@ -661,7 +668,8 @@ func PauseDeadline(m store.MatchRow, lineups []store.LineupRow, userID uuid.UUID
 	return nil
 }
 
-// ResolveStalePause lets the captain decide for any side past its deadline.
+// ResolveStalePause decides for any side past its deadline: their pre-match
+// plan carries on, or the captain decides if they had none.
 func (s *Service) ResolveStalePause(ctx context.Context, m store.MatchRow) error {
 	if m.IsBot || m.AwayUserID == nil || (m.Status != StatusBreak && m.Status != StatusSuperOver) {
 		return nil
@@ -681,7 +689,7 @@ func (s *Service) ResolveStalePause(ctx context.Context, m store.MatchRow) error
 		}
 		log.Printf("match %s: %s ran out of time, captain decides", m.ID, u.Username)
 		if m.Status == StatusBreak {
-			if err := s.SubmitBreak(ctx, u, m.ID, BreakReq{Call: string(engine.CallCaptain)}); err != nil {
+			if err := s.SubmitBreak(ctx, u, m.ID, BreakReq{}); err != nil { // keeps their pre-match plan
 				return err
 			}
 		} else if err := s.SubmitSuperOver(ctx, u, m.ID, engine.SuperOverPicks{}); err != nil {
