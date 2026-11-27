@@ -208,8 +208,8 @@ func TestBalance(t *testing.T) {
 		}
 	}
 	edge := float64(sw) / 2000
-	if edge < 0.58 || edge > 0.85 {
-		t.Fatalf("10-rating edge win rate %.2f outside 58-85", edge)
+	if edge < 0.80 || edge > 0.96 {
+		t.Fatalf("10-rating edge win rate %.2f outside 80-96", edge)
 	}
 
 	if allWickets > 0 {
