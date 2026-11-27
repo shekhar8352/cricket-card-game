@@ -136,6 +136,7 @@ export function LineupPage() {
           { key: 'batting', label: 'Batting' },
           { key: 'bowling', label: 'Bowling', badge: bowlErr ? '!' : null, warn: !!bowlErr },
           { key: 'captain', label: 'Captain' },
+          { key: 'plan', label: 'Plan' },
           { key: 'scout', label: 'Scout' },
         ]}
       />

@@ -12,20 +12,57 @@ func XPToNext(level int) int {
 	return level * 80
 }
 
-func XPForSacrifice(rarity engine.Rarity, samePlayer bool) int {
-	base := 40
-	switch rarity {
-	case engine.RaritySilver:
-		base = 55
-	case engine.RarityGold:
-		base = 80
-	case engine.RarityLegend:
-		base = 120
+// Sacrifice XP follows the sacrificed card's overall rating (as shown on the
+// card, level bonus included) on a steep curve, then how well its role suits
+// the player being trained:
+//
+//	xp = SacrificeBase x SacrificeGrowth^(overall - SacrificeFrom) x affinity
+//
+// A 55 gives about 22, a 70 about 54, an 80 about 96 and a 90 about 172 before
+// affinity. A batter feeds a batter best (x1.5), a keeper or all-rounder
+// reasonably (x1.1), a specialist bowler poorly (x0.7). A copy of the player
+// being trained gives SacrificeSameMult x the base instead of the affinity.
+const (
+	SacrificeBase     = 30.0 // XP for a card rated SacrificeFrom, before affinity
+	SacrificeFrom     = 60
+	SacrificeGrowth   = 1.06 // each overall point is worth 6% more XP
+	SacrificeMinXP    = 10
+	SacrificeSameMult = 3.0
+)
+
+// Affinity levels between the sacrificed card's role and the target's role.
+const (
+	AffinitySame    = 1.5
+	AffinityRelated = 1.1
+	AffinityOff     = 0.7
+)
+
+// RoleAffinity is the XP multiplier for feeding a card of role `from` to a
+// player of role `to`. Batters and keepers share batting skills; all-rounders
+// share with both batters and bowlers.
+func RoleAffinity(from, to engine.Role) float64 {
+	if from == to {
+		return AffinitySame
 	}
+	related := func(a, b engine.Role) bool {
+		return (a == engine.RoleBAT && b == engine.RoleWK) || (a == engine.RoleAR && (b == engine.RoleBAT || b == engine.RoleBOWL))
+	}
+	if related(from, to) || related(to, from) {
+		return AffinityRelated
+	}
+	return AffinityOff
+}
+
+func XPForSacrifice(overall int, from, to engine.Role, samePlayer bool) int {
+	mult := RoleAffinity(from, to)
 	if samePlayer {
-		return base * 3
+		mult = SacrificeSameMult
 	}
-	return base
+	xp := int(math.Round(SacrificeBase * math.Pow(SacrificeGrowth, float64(overall-SacrificeFrom)) * mult))
+	if xp < SacrificeMinXP {
+		return SacrificeMinXP
+	}
+	return xp
 }
 
 type RewardOdds struct {

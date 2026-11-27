@@ -84,11 +84,18 @@ export interface ConditionsDef {
   seamEdges: number
 }
 
+/** A game plan for one innings: a batting or bowling call for every over. */
 export interface BreakCallDef {
   code: string
-  side: 'chase' | 'defend'
+  side: 'bat' | 'bowl'
   name: string
   description: string
+  /** fixed: seq sets each over; read: the captain counters what they see; target_weak / match_ups adapt per over. */
+  mode: 'fixed' | 'read' | 'target_weak' | 'match_ups'
+  /** Per over: -1 defend, 0 balanced, 1 attack (fixed plans). */
+  seq: number[]
+  /** Opposing plans that hurt this one most. */
+  weakness?: string
   bias: number[]
 }
 
@@ -105,6 +112,8 @@ export interface MatchPause {
   conditions: ConditionsDef
   options?: BreakCallDef[]
   suggested?: string
+  /** The plan picked before the match for this side; it carries on unless changed. */
+  currentPlan?: string
   decided: boolean
   yourCall?: string
   opponentDecided: boolean
@@ -407,6 +416,8 @@ export interface LineupDTO {
   bowlingPlan?: string[]
   tossPref?: string
   captainId?: string
+  batPlan?: string
+  bowlPlan?: string
 }
 
 export interface PitchDef {
@@ -455,13 +466,15 @@ export interface EngineModel {
     levelBonus: number
     levelCaps: Record<Rarity, number>
     performanceXP: { min: number; perPoint: number; fromRating: number }
-    sacrificeXP: Record<Rarity, { other: number; samePlayer: number }>
+    /** Sacrifice XP: base x growth^(overall - from) x affinity[sacrificed role][target role], at least min; copies use sameMult instead of affinity. */
+    sacrificeXP: { base: number; from: number; growth: number; min: number; sameMult: number; affinity: Record<Role, Record<Role, number>> }
     maxSacrifices: number
   }
   ratings: RatingRules
   captain: CaptainRules
   masterstrokes: MasterstrokeDef[]
   breakCalls: BreakCallDef[]
+  plans?: { chaseOverrideRRR: number }
   conditions: ConditionsDef[]
   chemistry: ChemistryRules
   powerplay: { overs: number; effect: WeightDelta; defendFieldScale: number; boundarySaves: boolean }

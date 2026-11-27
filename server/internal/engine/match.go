@@ -113,6 +113,7 @@ func SimulateFirstInnings(seed int64, home, away Lineup, toss TossResult) (First
 	inn, balls := playInnings(rng, &inningsCtx{
 		innings: 0, batting: sideLineup(home, away, firstSide), bowling: sideLineup(home, away, secondSide),
 		batSide: firstSide, bowlSide: secondSide, target: -1, pitch: pitch, cond: CondClear,
+		batCall: sideLineup(home, away, firstSide).BatPlan, bowlCall: sideLineup(home, away, secondSide).BowlPlan,
 		mem: mem, overs: OversPerInnings, maxWickets: MaxWickets,
 	})
 	return FirstInnings{
@@ -161,7 +162,18 @@ func orCaptain(c BreakCall) BreakCall {
 	return c
 }
 
-// AutoBreakCall is the card a side's own captain picks.
+// AutoPlans are the first-innings plans a side's own captain picks (bots).
+func AutoPlans(seed int64, l Lineup) (bat, bowl BreakCall) {
+	cap := CaptainOf(l)
+	if cap == nil {
+		return CallCaptain, CallCaptain
+	}
+	rng := rand.New(rand.NewSource(seed ^ autoCallSalt ^ 0x7f4a7c15))
+	par := PitchByCode(PitchForSeed(seed)).Par
+	return CaptainBreakCall(rng, *cap, "bat", 0, par), CaptainBreakCall(rng, *cap, "bowl", 0, par)
+}
+
+// AutoBreakCall is the plan a side's own captain picks at the break.
 func AutoBreakCall(seed int64, l Lineup, fi FirstInnings, side string) BreakCall {
 	rng := rand.New(rand.NewSource(seed ^ autoCallSalt ^ int64(len(side))))
 	return CaptainBreakCall(rng, *CaptainOf(l), fi.RoleOf(side), fi.Target(), PitchByCode(fi.Pitch).Par)

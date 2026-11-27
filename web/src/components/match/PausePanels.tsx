@@ -7,6 +7,7 @@ import { PlayerAvatar } from '../card/PlayerAvatar'
 import { cn } from '../../lib/cn'
 import { ROLE_LABEL } from '../../lib/labels'
 import { validateBowlingPlan } from '../../lib/rules'
+import { GamePlanPicker } from './GamePlanPicker'
 import type { ConditionsDef, LineupDTO, MatchDTO, MatchPause, PlayerCard } from '../../types/engine'
 
 const COND_ICON: Record<string, typeof CloudSun> = { clear: CloudSun, dew: Droplets, crumbling: Mountain, overcast: CloudRain }
@@ -79,7 +80,7 @@ function OrderList({ ids, byId, onChange }: { ids: string[]; byId: Record<string
 export function BreakPanel({ m, pause, mine, teamName }: { m: MatchDTO; pause: MatchPause; mine?: LineupDTO; teamName: string }) {
   const qc = useQueryClient()
   const byId = useMemo(() => Object.fromEntries((mine?.cards ?? []).map((c) => [c.id, c])), [mine])
-  const [call, setCall] = useState(pause.suggested ?? pause.options?.[0]?.code ?? 'captain')
+  const [call, setCall] = useState(pause.currentPlan ?? pause.suggested ?? '')
   const [order, setOrder] = useState<string[]>(mine?.battingOrder ?? [])
   const [bowling, setBowling] = useState<string[]>(mine?.bowlingPlan ?? [])
   const [busy, setBusy] = useState(false)
@@ -95,7 +96,7 @@ export function BreakPanel({ m, pause, mine, teamName }: { m: MatchDTO; pause: M
       const changedBat = chasing && JSON.stringify(order) !== JSON.stringify(mine?.battingOrder ?? [])
       const changedBowl = !chasing && JSON.stringify(bowling) !== JSON.stringify(mine?.bowlingPlan ?? [])
       const next = await api.submitBreak(m.id, letCaptain ? { call: 'captain' } : {
-        call,
+        call: call || 'captain',
         ...(changedBat ? { battingOrder: order } : {}),
         ...(changedBowl ? { bowlingPlan: bowling } : {}),
       })
@@ -124,7 +125,7 @@ export function BreakPanel({ m, pause, mine, teamName }: { m: MatchDTO; pause: M
           <h2 id="break-h" className="font-display text-3xl sm:text-4xl font-bold uppercase leading-none mt-1">
             {chasing ? `${teamName} need ${pause.target} to win` : `${teamName} defend ${pause.target - 1}`}
           </h2>
-          <p className="text-muted mt-1">{chasing ? `${pause.target} off 30 balls: ${((pause.target / 30) * 6).toFixed(2)} an over.` : `They need ${pause.target} off 30 balls.`} Make your captain’s call.</p>
+          <p className="text-muted mt-1">{chasing ? `${pause.target} off 30 balls: ${((pause.target / 30) * 6).toFixed(2)} an over.` : `They need ${pause.target} off 30 balls.`} Set the plan for every over, or leave it to your captain.</p>
         </div>
         <Countdown deadline={pause.deadline} />
       </div>
@@ -132,25 +133,16 @@ export function BreakPanel({ m, pause, mine, teamName }: { m: MatchDTO; pause: M
       <ConditionsCard c={pause.conditions} />
 
       <div>
-        <h3 className="font-bold flex items-center gap-1.5 mb-2"><Swords size={16} aria-hidden /> Captain’s call for the {chasing ? 'chase' : 'defence'}</h3>
-        <div role="radiogroup" aria-label="Plan for the second innings" className="grid sm:grid-cols-3 gap-2">
-          {(pause.options ?? []).map((o) => (
-            <button
-              key={o.code}
-              type="button"
-              role="radio"
-              aria-checked={call === o.code}
-              onClick={() => setCall(o.code)}
-              className={cn('text-left rounded-2xl border-2 p-3 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent', call === o.code ? 'border-cta bg-cta/10' : 'border-border hover:border-muted')}
-            >
-              <p className="font-display text-xl font-bold leading-tight flex items-center gap-1.5">
-                {o.name}
-                {pause.suggested === o.code && <span className="rounded bg-success/15 text-success px-1.5 text-[10px] font-bold uppercase tracking-wide"><Crown size={10} className="inline -mt-0.5 mr-0.5" aria-hidden />Captain’s pick</span>}
-              </p>
-              <p className="text-sm text-muted mt-0.5">{o.description}</p>
-            </button>
-          ))}
-        </div>
+        <h3 className="font-bold flex items-center gap-1.5 mb-2"><Swords size={16} aria-hidden /> Your plan for the {chasing ? 'chase' : 'defence'}</h3>
+        <GamePlanPicker
+          options={pause.options ?? []}
+          value={call}
+          onChange={setCall}
+          label="Plan for the second innings"
+          suggested={pause.suggested}
+          current={pause.currentPlan}
+        />
+        {chasing && <p className="text-xs text-muted mt-2">Any plan switches to attack once the asking rate passes 13 an over.</p>}
       </div>
 
       <details className="rounded-2xl border border-border p-3">
@@ -176,8 +168,8 @@ export function BreakPanel({ m, pause, mine, teamName }: { m: MatchDTO; pause: M
       </details>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button disabled={busy || !!bowlErr} onClick={() => submit(false)}><Sparkles size={16} aria-hidden /> {busy ? 'Sending…' : 'Make the call'}</Button>
-        <Button variant="outline" disabled={busy} onClick={() => submit(true)}><Crown size={16} aria-hidden /> Let my captain decide</Button>
+        <Button disabled={busy || !!bowlErr} onClick={() => submit(false)}><Sparkles size={16} aria-hidden /> {busy ? 'Sending…' : 'Lock in plan'}</Button>
+        <Button variant="outline" disabled={busy} onClick={() => submit(true)}><Crown size={16} aria-hidden /> Captain decides</Button>
         {err && <p className="text-wicket text-sm" role="alert">{err}</p>}
       </div>
     </section>

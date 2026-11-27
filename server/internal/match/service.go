@@ -177,7 +177,10 @@ func (s *Service) DefaultLineup(ctx context.Context, user store.User) (LineupReq
 		byID[c.ID.String()] = c
 	}
 	if sq, err := s.Store.Squad(ctx, user.ID); err == nil && len(sq.CardIDs) == 7 {
-		req := LineupReq{CardIDs: strs(sq.CardIDs), BattingOrder: strs(sq.BattingOrder), BowlingPlan: strs(sq.BowlingPlan)}
+		req := LineupReq{CardIDs: strs(sq.CardIDs), BattingOrder: strs(sq.BattingOrder), BowlingPlan: strs(sq.BowlingPlan), BatPlan: sq.BatPlan, BowlPlan: sq.BowlPlan}
+		if req.validatePlans() != nil {
+			req.BatPlan, req.BowlPlan = "", ""
+		}
 		if sq.CaptainID != nil {
 			req.CaptainID = sq.CaptainID.String()
 		}
@@ -229,9 +232,12 @@ func (s *Service) SaveDefault(ctx context.Context, user store.User, req LineupRe
 	if err := engine.ValidateLineup(lu); err != nil {
 		return err
 	}
+	if err := req.validatePlans(); err != nil {
+		return err
+	}
 	return s.Store.SaveSquad(ctx, user.ID, store.SquadRow{
 		CardIDs: parseIDs(req.CardIDs), BattingOrder: parseIDs(req.BattingOrder), BowlingPlan: parseIDs(req.BowlingPlan),
-		CaptainID: idPtr(req.CaptainID),
+		CaptainID: idPtr(req.CaptainID), BatPlan: req.BatPlan, BowlPlan: req.BowlPlan,
 	})
 }
 
@@ -309,6 +315,17 @@ type LineupReq struct {
 	BattingOrder []string `json:"battingOrder"`
 	BowlingPlan  []string `json:"bowlingPlan"`
 	CaptainID    string   `json:"captainId"`
+	// First-innings game plans: BatPlan applies if the side bats first,
+	// BowlPlan if it bowls first. "" or "captain" lets the captain decide.
+	BatPlan  string `json:"batPlan"`
+	BowlPlan string `json:"bowlPlan"`
+}
+
+func (r LineupReq) validatePlans() error {
+	if err := engine.ValidateBreakCall(engine.BreakCall(r.BatPlan), "bat"); err != nil {
+		return err
+	}
+	return engine.ValidateBreakCall(engine.BreakCall(r.BowlPlan), "bowl")
 }
 
 func (s *Service) LockLineup(ctx context.Context, user store.User, matchID uuid.UUID, req LineupReq) error {
@@ -345,6 +362,9 @@ func (s *Service) LockLineup(ctx context.Context, user store.User, matchID uuid.
 	if err := engine.ValidateLineup(lu); err != nil {
 		return err
 	}
+	if err := req.validatePlans(); err != nil {
+		return err
+	}
 	now := time.Now()
 	snap, _ := json.Marshal(engCards)
 	if err := s.Store.UpsertLineup(ctx, store.LineupRow{
@@ -352,6 +372,7 @@ func (s *Service) LockLineup(ctx context.Context, user store.User, matchID uuid.
 		CardIDs: parseIDs(req.CardIDs), BattingOrder: parseIDs(req.BattingOrder),
 		BowlingPlan: parseIDs(req.BowlingPlan),
 		LockedAt: &now, Snapshot: snap, CaptainID: idPtr(req.CaptainID),
+		BatPlan: req.BatPlan, BowlPlan: req.BowlPlan,
 	}); err != nil {
 		return err
 	}
@@ -460,7 +481,7 @@ func planTraining(target store.CardRow, sacs []store.CardRow) (TrainResult, erro
 	}
 	gain := 0
 	for _, c := range sacs {
-		gain += cards.XPForSacrifice(c.Rarity, c.PlayerID == target.PlayerID)
+		gain += cards.XPForSacrifice(engine.Overall(c.ToEngine()), c.Player.Role, target.Player.Role, c.PlayerID == target.PlayerID)
 	}
 	lvl, xp, wasted := cards.ApplyXP(target.Level, target.XP, target.Rarity, gain)
 	before := target.ToEngine()
@@ -613,6 +634,7 @@ func lineupFromRow(l store.LineupRow) (engine.Lineup, error) {
 		UserID: l.UserID, Cards: cards,
 		BattingOrder: ids(l.BattingOrder), BowlingPlan: ids(l.BowlingPlan),
 		TossPref: l.TossPref, Tactics: tac, CaptainID: captain,
+		BatPlan: engine.BreakCall(l.BatPlan), BowlPlan: engine.BreakCall(l.BowlPlan),
 	}, nil
 }
 

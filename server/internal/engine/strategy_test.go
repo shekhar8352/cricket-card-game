@@ -108,13 +108,13 @@ func TestCounterPlanHelpsUnderdog(t *testing.T) {
 		BatApproach: []Approach{ApproachBalanced, ApproachBalanced, ApproachBalanced},
 		FieldPlan:   []FieldPlan{FieldBalanced, FieldBalanced, FieldBalanced, FieldBalanced, FieldBalanced},
 	}
-	plain, smart := rate(balanced, 10), rate(counter, 10)
-	t.Logf("weak vs +10: balanced plan %.1f%%, counter plan %.1f%%", plain*100, smart*100)
+	plain, smart := rate(balanced, underdogGap), rate(counter, underdogGap)
+	t.Logf("weak vs +6: balanced plan %.1f%%, counter plan %.1f%%", plain*100, smart*100)
 	if smart-plain < 0.10 {
 		t.Errorf("counter plan should add at least 10pp for the underdog (got %.1f -> %.1f)", plain*100, smart*100)
 	}
 	if smart >= 0.5 {
-		t.Errorf("a 10-point stronger side should still be favoured (underdog won %.1f%%)", smart*100)
+		t.Errorf("a stronger side should still be favoured (underdog won %.1f%%)", smart*100)
 	}
 }
 
@@ -192,5 +192,72 @@ func TestValidateTactics(t *testing.T) {
 	}
 	if ValidateTactics(Tactics{FieldPlan: make([]FieldPlan, 6)}) == nil {
 		t.Error("6 overs of field plan should fail")
+	}
+}
+
+// Every game plan must have an answer: no bowling plan holds every batting
+// plan down, and no batting plan scores well against every bowling plan.
+func TestPlanBalance(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	var bat, bowl []BreakCall
+	for _, d := range BreakCalls {
+		if d.Side == "bat" {
+			bat = append(bat, d.Code)
+		} else {
+			bowl = append(bowl, d.Code)
+		}
+	}
+	const n = 800
+	runs := map[[2]BreakCall]float64{}
+	for _, a := range bat {
+		for _, b := range bowl {
+			h, w := makeXI("h", 0), makeXI("a", 0)
+			h.BatPlan, w.BowlPlan = a, b
+			total := 0
+			for i := 0; i < n; i++ {
+				fi, err := SimulateFirstInnings(int64(70000+i), h, w, TossResult{WinnerSide: "home", Decision: "bat"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				total += fi.Innings.Runs
+			}
+			runs[[2]BreakCall{a, b}] = float64(total) / n
+		}
+	}
+	// Judge against the average of the table: plan-vs-plan games run a little
+	// above the AI-vs-AI par.
+	par := 0.0
+	for _, v := range runs {
+		par += v
+	}
+	par /= float64(len(runs))
+	t.Logf("average %.1f", par)
+	for _, b := range bowl {
+		worst := 0.0
+		for _, a := range bat {
+			worst = math.Max(worst, runs[[2]BreakCall{a, b}])
+		}
+		t.Logf("bowling %-18s worst case %.1f", b, worst)
+		if d, _ := BreakCallByCode(b); d.Mode == ModeRead {
+			continue // adaptive: it reads the batters, so it has no fixed weakness
+		}
+		if worst < par+0.5 {
+			t.Errorf("bowling plan %s is safe against every batting plan (worst %.1f, average %.1f)", b, worst, par)
+		}
+	}
+	for _, a := range bat {
+		best := 1e9
+		for _, b := range bowl {
+			best = math.Min(best, runs[[2]BreakCall{a, b}])
+		}
+		t.Logf("batting %-18s held to %.1f at best", a, best)
+		if d, _ := BreakCallByCode(a); d.Mode == ModeRead {
+			continue
+		}
+		if best > par-0.5 {
+			t.Errorf("batting plan %s scores well against every bowling plan (held to %.1f at best, average %.1f)", a, best, par)
+		}
 	}
 }

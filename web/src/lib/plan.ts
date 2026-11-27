@@ -9,6 +9,8 @@ export interface MatchPlan {
   order: string[] // batting order (all 7 once the team is full)
   bowling: string[] // bowler per over ('' when unset)
   captainId: string // '' until the team is full
+  batPlan: string // game plan if we bat first ('' = captain decides)
+  bowlPlan: string // game plan if we bowl first
 }
 
 export interface SavedDefault {
@@ -16,10 +18,12 @@ export interface SavedDefault {
   battingOrder: string[] | null
   bowlingPlan: string[] | null
   captainId?: string | null
+  batPlan?: string | null
+  bowlPlan?: string | null
 }
 
 export function emptyPlan(): MatchPlan {
-  return { picked: Array(7).fill(''), order: [], bowling: ['', '', '', '', ''], captainId: '' }
+  return { picked: Array(7).fill(''), order: [], bowling: ['', '', '', '', ''], captainId: '', batPlan: '', bowlPlan: '' }
 }
 
 /** Puts cards into the role slots (3 batters, keeper, all-rounder, 2 bowlers). */
@@ -70,6 +74,8 @@ export function planFromDefault(saved: SavedDefault | undefined, byId: Record<st
     order: sameSet(order) ? order : base.order,
     bowling: bowling.length === 5 && !validateBowlingPlan(cards, bowling) ? bowling : base.bowling,
     captainId: ids.includes(captain) ? captain : base.captainId,
+    batPlan: saved?.batPlan ?? '',
+    bowlPlan: saved?.bowlPlan ?? '',
   }
 }
 
@@ -88,6 +94,8 @@ export function toRequest(plan: MatchPlan) {
     battingOrder: plan.order,
     bowlingPlan: plan.bowling,
     captainId: plan.captainId,
+    batPlan: plan.batPlan,
+    bowlPlan: plan.bowlPlan,
   }
 }
 

@@ -287,7 +287,7 @@ func (s *Server) getSquad(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]any{
 		"cardIds": sq.CardIDs, "battingOrder": sq.BattingOrder, "bowlingPlan": sq.BowlingPlan,
-		"captainId": sq.CaptainID,
+		"captainId": sq.CaptainID, "batPlan": sq.BatPlan, "bowlPlan": sq.BowlPlan,
 	})
 }
 
@@ -523,6 +523,7 @@ func (s *Server) matchDTO(ctx context.Context, m store.MatchRow, viewer store.Us
 			if l.CaptainID != nil {
 				dto["captainId"] = l.CaptainID.String()
 			}
+			dto["batPlan"], dto["bowlPlan"] = l.BatPlan, l.BowlPlan
 		}
 		return dto
 	}

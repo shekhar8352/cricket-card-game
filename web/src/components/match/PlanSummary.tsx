@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, CheckCircle2, ChevronRight, Crown, Eye, Link2 } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronRight, Crown, Eye, Link2, Swords } from 'lucide-react'
+import { PlanOvers } from './GamePlanPicker'
 import { api } from '../../api/client'
 import { captainStyle, captainTendency, teamChemistry } from '../../lib/captaincy'
 import { cn } from '../../lib/cn'
@@ -37,6 +38,7 @@ export function PlanSummary({
   const captain = byId[plan.captainId]
   const chem = teamChemistry(plan.order, byId, model.data?.chemistry)
   const filled = plan.picked.filter(Boolean).length
+  const plans = model.data?.breakCalls ?? []
 
   return (
     <div className="space-y-3">
@@ -97,6 +99,22 @@ export function PlanSummary({
             )
           })}
         </ol>
+      </section>
+
+      <section className="glass rounded-2xl border border-border p-3">
+        <Row title="Game plan" icon={<Swords size={16} className="text-cta" aria-hidden />} ok note={!plan.batPlan && !plan.bowlPlan ? 'Captain decides' : null} onEdit={() => onEdit('plan')} />
+        <dl className="mt-2 space-y-1.5">
+          {([['Bat first', plan.batPlan], ['Bowl first', plan.bowlPlan]] as const).map(([label, code]) => {
+            const d = plans.find((p) => p.code === code)
+            return (
+              <div key={label} className="flex items-center gap-2">
+                <dt className="w-20 shrink-0 text-xs font-bold uppercase tracking-wide text-muted">{label}</dt>
+                <dd className="min-w-0 flex-1 truncate font-semibold">{d?.name ?? 'Captain decides'}</dd>
+                {d && <PlanOvers def={d} className="shrink-0" />}
+              </div>
+            )
+          })}
+        </dl>
       </section>
 
       <button type="button" onClick={() => onEdit('scout')} className="w-full text-left cursor-pointer glass rounded-2xl border border-border p-3">

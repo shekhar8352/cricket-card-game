@@ -73,6 +73,7 @@ export function SquadPage() {
           { key: 'batting', label: 'Batting' },
           { key: 'bowling', label: 'Bowling', badge: bowlErr ? '!' : null, warn: !!bowlErr },
           { key: 'captain', label: 'Captain' },
+          { key: 'plan', label: 'Plan' },
         ]}
       />
       {lostCards && (

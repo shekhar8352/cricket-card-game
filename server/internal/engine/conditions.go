@@ -1,6 +1,8 @@
 package engine
 
 // Conditions change at the innings break and apply to the second innings only.
+// The effects are kept small (about half a pitch type's) so they nudge the
+// chase rather than swing it; the break plan and bowling order can answer them.
 type Conditions string
 
 const (
@@ -24,9 +26,9 @@ type ConditionsDef struct {
 
 var ConditionsList = []ConditionsDef{
 	{CondClear, "Clear evening", "Nothing changes.", 50, 0, 0, 0, 0, 0},
-	{CondDew, "Dew", "A wet ball: spinners lose grip, catches slip, batting gets easier.", 20, 0, -4, 2, 5, 0},
-	{CondCrumbling, "Crumbling pitch", "The surface breaks up: spinners get extra turn.", 15, 0, 4, 0, 0, 0},
-	{CondOvercast, "Cloud cover", "Clouds roll in: the ball swings and edges carry.", 15, 4, 0, 0, 0, 6},
+	{CondDew, "Dew", "A wet ball: spinners lose a little grip, catches get harder, batting gets easier.", 20, 0, -2, 1, 3, 0},
+	{CondCrumbling, "Crumbling pitch", "The surface breaks up: spinners get a little extra turn.", 15, 0, 2, 0, 0, 0},
+	{CondOvercast, "Cloud cover", "Clouds roll in: the ball swings a bit and edges carry.", 15, 2, 0, 0, 0, 3},
 }
 
 func ConditionsByCode(c Conditions) ConditionsDef {

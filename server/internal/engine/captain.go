@@ -217,6 +217,15 @@ type situation struct {
 
 func (s situation) chasing() bool { return s.target > 0 }
 
+// requiredRate is runs per over still needed (0 when not chasing).
+func (s situation) requiredRate() float64 {
+	if !s.chasing() {
+		return 0
+	}
+	ballsLeft := (OversPerInnings - s.over) * BallsPerOver
+	return float64(s.target-s.runs) / math.Max(1, float64(ballsLeft)) * 6
+}
+
 func (s situation) requiredVsCurrent() float64 {
 	if !s.chasing() {
 		return 0
@@ -236,7 +245,11 @@ func chooseApproach(rng *rand.Rand, cap Card, s situation, oppFields []FieldPlan
 	cp := CaptaincyOf(cap)
 	var u [3]float64
 	agg := float64(cp.Aggression-50) / Captain.AggressionDivisor
-	j := judgement(cap, 0)
+	extra := 0
+	if call == CallReadField {
+		extra = Captain.ReadTheBatters
+	}
+	j := judgement(cap, extra)
 	for i, o := range options3 {
 		f := float64(o)
 		sit := 0.0
@@ -252,12 +265,12 @@ func chooseApproach(rng *rand.Rand, cap Card, s situation, oppFields []FieldPlan
 		if s.wickets >= 4 {
 			sit -= 0.8
 		}
-		u[i] = (agg + sit*j + breakBias(call, s.over, true)) * f
+		u[i] = (agg + sit*j) * f
 	}
-	if pred, ok := mostCommon(oppFields); ok && rng.Float64()*100 < float64(effectiveTactics(cap, 0)) {
+	if pred, ok := mostCommon(oppFields); ok && rng.Float64()*100 < float64(effectiveTactics(cap, extra)) {
 		u[stepOfApproach(BestApproachVs(pred))+1] += Captain.ReadBonus
 	}
-	return approachOf(options3[pickSoftmax(rng, u, temperature(cap, 0))])
+	return approachOf(options3[pickSoftmax(rng, u, temperature(cap, extra))])
 }
 
 // chooseField is the fielding captain's call for an over.
@@ -285,7 +298,7 @@ func chooseField(rng *rand.Rand, cap Card, s situation, oppApproaches []Approach
 		if s.wickets >= 4 {
 			sit += 0.8 // go for the kill
 		}
-		u[i] = (agg + sit*j + breakBias(call, s.over, false)) * f
+		u[i] = (agg + sit*j) * f
 	}
 	if pred, ok := mostCommon(oppApproaches); ok && rng.Float64()*100 < float64(effectiveTactics(cap, extra)) {
 		u[stepOfField(BestFieldVs(pred))+1] += Captain.ReadBonus

@@ -98,7 +98,7 @@ func (s *Server) publicSquad(ctx context.Context, userID uuid.UUID, owned []stor
 	}
 	return map[string]any{
 		"cards": cards, "battingOrder": keep(order), "bowlingPlan": keep(sq.BowlingPlan),
-		"captainId": sq.CaptainID,
+		"captainId": sq.CaptainID, "batPlan": sq.BatPlan, "bowlPlan": sq.BowlPlan,
 	}, nil
 }
 

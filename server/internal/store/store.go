@@ -469,24 +469,26 @@ type LineupRow struct {
 	BreakLocked  *time.Time
 	SuperPicks   []byte // engine.SuperOverPicks
 	SuperLocked  *time.Time
+	BatPlan      string // first-innings game plans ("" = captain decides)
+	BowlPlan     string
 }
 
 func (s *Store) UpsertLineup(ctx context.Context, l LineupRow) error {
 	_, err := s.Pool.Exec(ctx, `
-		INSERT INTO match_lineups (match_id, user_id, card_ids, batting_order, bowling_plan, toss_pref, locked_at, cards_snapshot, tactics, captain_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+		INSERT INTO match_lineups (match_id, user_id, card_ids, batting_order, bowling_plan, toss_pref, locked_at, cards_snapshot, tactics, captain_id, bat_plan, bowl_plan)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 		ON CONFLICT (match_id, user_id) DO UPDATE SET
 			card_ids=EXCLUDED.card_ids, batting_order=EXCLUDED.batting_order, bowling_plan=EXCLUDED.bowling_plan,
 			toss_pref=EXCLUDED.toss_pref, locked_at=EXCLUDED.locked_at, cards_snapshot=EXCLUDED.cards_snapshot,
-			tactics=EXCLUDED.tactics, captain_id=EXCLUDED.captain_id
-	`, l.MatchID, l.UserID, l.CardIDs, l.BattingOrder, l.BowlingPlan, l.TossPref, l.LockedAt, l.Snapshot, l.Tactics, l.CaptainID)
+			tactics=EXCLUDED.tactics, captain_id=EXCLUDED.captain_id, bat_plan=EXCLUDED.bat_plan, bowl_plan=EXCLUDED.bowl_plan
+	`, l.MatchID, l.UserID, l.CardIDs, l.BattingOrder, l.BowlingPlan, l.TossPref, l.LockedAt, l.Snapshot, l.Tactics, l.CaptainID, l.BatPlan, l.BowlPlan)
 	return err
 }
 
 func (s *Store) Lineups(ctx context.Context, matchID uuid.UUID) ([]LineupRow, error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT match_id, user_id, card_ids, batting_order, bowling_plan, toss_pref, locked_at, cards_snapshot, tactics,
-			captain_id, break_call, break_order, break_locked_at, super_picks, super_locked_at
+			captain_id, break_call, break_order, break_locked_at, super_picks, super_locked_at, bat_plan, bowl_plan
 		FROM match_lineups WHERE match_id=$1
 	`, matchID)
 	if err != nil {
@@ -497,7 +499,7 @@ func (s *Store) Lineups(ctx context.Context, matchID uuid.UUID) ([]LineupRow, er
 	for rows.Next() {
 		var l LineupRow
 		if err := rows.Scan(&l.MatchID, &l.UserID, &l.CardIDs, &l.BattingOrder, &l.BowlingPlan, &l.TossPref, &l.LockedAt, &l.Snapshot, &l.Tactics,
-			&l.CaptainID, &l.BreakCall, &l.BreakOrder, &l.BreakLocked, &l.SuperPicks, &l.SuperLocked); err != nil {
+			&l.CaptainID, &l.BreakCall, &l.BreakOrder, &l.BreakLocked, &l.SuperPicks, &l.SuperLocked, &l.BatPlan, &l.BowlPlan); err != nil {
 			return nil, err
 		}
 		out = append(out, l)
@@ -535,6 +537,8 @@ type SquadRow struct {
 	TossPref     string
 	Tactics      []byte // unused since captains decide tactics
 	CaptainID    *uuid.UUID
+	BatPlan      string
+	BowlPlan     string
 }
 
 func (s *Store) SaveSquad(ctx context.Context, userID uuid.UUID, sq SquadRow) error {
@@ -542,20 +546,20 @@ func (s *Store) SaveSquad(ctx context.Context, userID uuid.UUID, sq SquadRow) er
 		sq.TossPref = "chase"
 	}
 	_, err := s.Pool.Exec(ctx, `
-		INSERT INTO user_squads (user_id, card_ids, batting_order, bowling_plan, toss_pref, tactics, captain_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)
+		INSERT INTO user_squads (user_id, card_ids, batting_order, bowling_plan, toss_pref, tactics, captain_id, bat_plan, bowl_plan)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		ON CONFLICT (user_id) DO UPDATE SET card_ids=EXCLUDED.card_ids, batting_order=EXCLUDED.batting_order,
 			bowling_plan=EXCLUDED.bowling_plan, toss_pref=EXCLUDED.toss_pref, tactics=EXCLUDED.tactics,
-			captain_id=EXCLUDED.captain_id, updated_at=now()
-	`, userID, sq.CardIDs, sq.BattingOrder, sq.BowlingPlan, sq.TossPref, sq.Tactics, sq.CaptainID)
+			captain_id=EXCLUDED.captain_id, bat_plan=EXCLUDED.bat_plan, bowl_plan=EXCLUDED.bowl_plan, updated_at=now()
+	`, userID, sq.CardIDs, sq.BattingOrder, sq.BowlingPlan, sq.TossPref, sq.Tactics, sq.CaptainID, sq.BatPlan, sq.BowlPlan)
 	return err
 }
 
 // Squad returns the saved default, or a zero SquadRow if none is saved.
 func (s *Store) Squad(ctx context.Context, userID uuid.UUID) (SquadRow, error) {
 	var sq SquadRow
-	err := s.Pool.QueryRow(ctx, `SELECT card_ids, batting_order, bowling_plan, toss_pref, tactics, captain_id FROM user_squads WHERE user_id=$1`, userID).
-		Scan(&sq.CardIDs, &sq.BattingOrder, &sq.BowlingPlan, &sq.TossPref, &sq.Tactics, &sq.CaptainID)
+	err := s.Pool.QueryRow(ctx, `SELECT card_ids, batting_order, bowling_plan, toss_pref, tactics, captain_id, bat_plan, bowl_plan FROM user_squads WHERE user_id=$1`, userID).
+		Scan(&sq.CardIDs, &sq.BattingOrder, &sq.BowlingPlan, &sq.TossPref, &sq.Tactics, &sq.CaptainID, &sq.BatPlan, &sq.BowlPlan)
 	if err == pgx.ErrNoRows {
 		return SquadRow{}, nil
 	}

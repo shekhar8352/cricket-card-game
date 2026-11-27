@@ -33,9 +33,17 @@ func (s *Server) engineModel(w http.ResponseWriter, r *http.Request) {
 	for _, a := range trophy.Arenas {
 		rewardOdds[a.Name] = cards.OddsForArena(a.Name)
 	}
-	sacrificeXP := map[string]map[string]int{}
-	for _, r := range []engine.Rarity{engine.RarityBronze, engine.RaritySilver, engine.RarityGold, engine.RarityLegend} {
-		sacrificeXP[string(r)] = map[string]int{"other": cards.XPForSacrifice(r, false), "samePlayer": cards.XPForSacrifice(r, true)}
+	roles := []engine.Role{engine.RoleBAT, engine.RoleWK, engine.RoleAR, engine.RoleBOWL}
+	affinity := map[string]map[string]float64{}
+	for _, from := range roles {
+		affinity[string(from)] = map[string]float64{}
+		for _, to := range roles {
+			affinity[string(from)][string(to)] = cards.RoleAffinity(from, to)
+		}
+	}
+	sacrificeXP := map[string]any{
+		"base": cards.SacrificeBase, "from": cards.SacrificeFrom, "growth": cards.SacrificeGrowth,
+		"min": cards.SacrificeMinXP, "sameMult": cards.SacrificeSameMult, "affinity": affinity,
 	}
 	levelCaps := map[string]int{}
 	for _, r := range []engine.Rarity{engine.RarityBronze, engine.RaritySilver, engine.RarityGold, engine.RarityLegend} {
@@ -91,6 +99,7 @@ func (s *Server) engineModel(w http.ResponseWriter, r *http.Request) {
 		"captain":       engine.Captain,
 		"masterstrokes": engine.Masterstrokes,
 		"breakCalls":    engine.BreakCalls,
+		"plans":         map[string]any{"chaseOverrideRRR": engine.ChaseOverrideRRR},
 		"conditions":    engine.ConditionsList,
 		"chemistry":     engine.Chemistry,
 		"powerplay": map[string]any{

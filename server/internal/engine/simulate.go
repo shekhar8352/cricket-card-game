@@ -107,12 +107,22 @@ func playInnings(rng *rand.Rand, ctx *inningsCtx) (InningsResult, []BallEvent) {
 		}
 
 		// Captains' calls for this over: a fixed plan if one was given, otherwise the captain decides.
+		// Order: a fixed Tactics plan (tests, odds tool), then the side's game
+		// plan, then the captain's own call.
 		app, fld := batting.Tactics.ApproachFor(over), bowling.Tactics.FieldFor(over)
-		if len(batting.Tactics.BatApproach) == 0 && batCaptain != nil {
-			app = chooseApproach(rng, *batCaptain, sit, ctx.mem.FieldCalls[bowlSide], ctx.batCall)
+		if len(batting.Tactics.BatApproach) == 0 {
+			if st, ok := planStep(ctx.batCall, sit, bowler, striker, bowling, true); ok && !ctx.superOver {
+				app = approachOf(st)
+			} else if batCaptain != nil {
+				app = chooseApproach(rng, *batCaptain, sit, ctx.mem.FieldCalls[bowlSide], ctx.batCall)
+			}
 		}
-		if len(bowling.Tactics.FieldPlan) == 0 && bowlCaptain != nil {
-			fld = chooseField(rng, *bowlCaptain, sit, ctx.mem.BatCalls[batSide], ctx.bowlCall)
+		if len(bowling.Tactics.FieldPlan) == 0 {
+			if st, ok := planStep(ctx.bowlCall, sit, bowler, striker, bowling, false); ok && !ctx.superOver {
+				fld = fieldOf(st)
+			} else if bowlCaptain != nil {
+				fld = chooseField(rng, *bowlCaptain, sit, ctx.mem.BatCalls[batSide], ctx.bowlCall)
+			}
 		}
 		call := OverCall{Over: over, Approach: app, Field: fld, BatRead: app == BestApproachVs(fld), FieldRead: fld == BestFieldVs(app)}
 
@@ -144,9 +154,9 @@ func playInnings(rng *rand.Rand, ctx *inningsCtx) (InningsResult, []BallEvent) {
 			tc := ballTactics{
 				approach: app, field: fld, pressure: dotStreak, pitch: pitch, cond: cond,
 				freeHit: freeHit, link: Link(striker, non), calm: calm,
-				armband: batCaptain != nil && striker.ID == batCaptain.ID,
+				armband:   batCaptain != nil && striker.ID == batCaptain.ID,
 				batStroke: batStroke, bowlStroke: bowlStroke,
-				rival: bowling.Rivals[bowler.PlayerID+"|"+striker.PlayerID] >= RivalDismissals,
+				rival:     bowling.Rivals[bowler.PlayerID+"|"+striker.PlayerID] >= RivalDismissals,
 				powerplay: !ctx.superOver && !ctx.noPowerplay && PhaseOf(over) == PhasePowerplay,
 			}
 			ev := resolveBall(rng, innings, over, legalInOver, seq, striker, non, bowler, batting, bowling, wkts, runs, target, ballsFaced[striker.ID], reprieve[striker.ID], tc)
@@ -773,8 +783,8 @@ func unique(in []string) []string {
 
 func playerOfMatch(res MatchResult, home, away Lineup) string {
 	type score struct {
-		id    string
-		pts   int
+		id  string
+		pts int
 	}
 	pts := map[string]int{}
 	add := func(id string, n int) { pts[id] += n }

@@ -2,7 +2,8 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { ChevronDown, ChevronUp, Crown, GripVertical, Link2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, Crown, GripVertical, Link2, Swords } from 'lucide-react'
+import { GamePlanPicker } from './GamePlanPicker'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../api/client'
 import { CaptaincyBars, MasterstrokeLine } from '../card/CaptainProfile'
@@ -42,7 +43,7 @@ function SortableRow({ id, name, index, total, onMove }: { id: string; name: str
  * match (approach, field, toss, masterstroke). Used for the saved default
  * (Squad & strategy) and for each match's lineup.
  */
-export type PlanSection = 'team' | 'batting' | 'bowling' | 'captain'
+export type PlanSection = 'team' | 'batting' | 'bowling' | 'captain' | 'plan'
 
 export function PlanEditor({
   cards, plan, onChange, pitch, aside, section, teamTools,
@@ -66,6 +67,7 @@ export function PlanEditor({
   const model = useQuery({ queryKey: ['engine-model'], queryFn: api.engineModel, staleTime: Infinity })
   const strokes = useMemo(() => Object.fromEntries((model.data?.masterstrokes ?? []).map((m) => [m.code, m])), [model.data])
   const chemRules = model.data?.chemistry
+  const planDefs = model.data?.breakCalls ?? []
   const { squad, bowlErr } = planErrors(plan, byId)
   const filled = squad.length
   const team = teamFielding(squad)
@@ -217,7 +219,7 @@ export function PlanEditor({
       <Panel className={only('captain')}>
         <h2 className="font-display text-2xl font-semibold flex items-center gap-2"><Crown size={22} className="text-cta" aria-hidden /> Captain</h2>
         <p className="text-muted text-sm mb-3 hidden sm:block">
-          Your captain makes every tactical call: how the batters play each over, where the field goes, the toss decision, when to play their masterstroke, and the plan at the innings break unless you choose one yourself.
+          Your captain makes the toss decision, plays their masterstroke, and makes every over’s call when you leave the game plan to them. Calm captains also steady the batters under pressure.
         </p>
         {filled < 7 ? (
           <p className="text-muted">Pick all seven players to choose a captain.</p>
@@ -254,6 +256,23 @@ export function PlanEditor({
             })}
           </div>
         )}
+      </Panel>
+
+      <Panel className={only('plan')}>
+        <h2 className="font-display text-2xl font-semibold flex items-center gap-2"><Swords size={22} className="text-cta" aria-hidden /> Game plan</h2>
+        <p className="text-muted text-sm mb-3">
+          How you play the first innings, over by over. The toss decides whether you bat or bowl first, so set both. You can change plan for the second innings at the break.
+        </p>
+        <div className="grid xl:grid-cols-2 gap-4">
+          <div>
+            <h3 className="font-bold mb-2">If you bat first</h3>
+            <GamePlanPicker compact options={planDefs.filter((d) => d.side === 'bat')} value={plan.batPlan} onChange={(v) => set({ batPlan: v })} label="Batting plan" />
+          </div>
+          <div>
+            <h3 className="font-bold mb-2">If you bowl first</h3>
+            <GamePlanPicker compact options={planDefs.filter((d) => d.side === 'bowl')} value={plan.bowlPlan} onChange={(v) => set({ bowlPlan: v })} label="Bowling plan" />
+          </div>
+        </div>
       </Panel>
     </div>
   )
