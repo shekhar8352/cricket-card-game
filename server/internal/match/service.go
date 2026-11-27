@@ -460,7 +460,7 @@ func planTraining(target store.CardRow, sacs []store.CardRow) (TrainResult, erro
 	}
 	gain := 0
 	for _, c := range sacs {
-		gain += cards.XPForSacrifice(c.Rarity, c.PlayerID == target.PlayerID)
+		gain += cards.XPForSacrifice(engine.Overall(c.ToEngine()), c.Player.Role, target.Player.Role, c.PlayerID == target.PlayerID)
 	}
 	lvl, xp, wasted := cards.ApplyXP(target.Level, target.XP, target.Rarity, gain)
 	before := target.ToEngine()
