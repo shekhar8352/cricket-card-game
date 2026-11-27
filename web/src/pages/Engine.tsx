@@ -1,4 +1,5 @@
 import { sacrificeXP } from '../lib/training'
+import { PlanOvers } from '../components/match/GamePlanPicker'
 import { ArenaBadge } from '../components/trophy/ArenaBadge'
 import { useQuery } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
@@ -644,16 +645,22 @@ function Quirks({ m }: { m: EngineModel }) {
 function BreakAndSuperOver({ m }: { m: EngineModel }) {
   return (
     <Section id="break" icon={<Clock size={20} />} title="Innings break & Super Over">
-      <p className="text-muted">At the break each side picks a plan card that steers its captain for the second innings, and may change its order: the chasing side its batting order, the defending side its bowling order. In matches against players, you have {m.pause.breakGraceSeconds} seconds before your captain decides. Bots decide instantly.</p>
+      <p className="text-muted">
+        Before the match you pick two game plans: one for if you bat first and one for if you bowl first. At the break you pick the plan for the second innings (your first-innings plan for that discipline carries on unless you change it), and may change your order: the chasing side its batting order, the defending side its bowling order.
+        A fixed plan sets the batting approach or field for every over (A attack, B balanced, D defend); adaptive plans decide each over from the match-up or by reading the opposition; “Captain decides” leaves every over to your captain’s personality.
+        A batting plan in a chase always switches to attack once the asking rate reaches {m.plans?.chaseOverrideRRR ?? 13} an over.
+        In matches against players, you have {m.pause.breakGraceSeconds} seconds at the break; after that your pre-match plan carries on. Bots decide instantly.
+      </p>
       <div className="grid md:grid-cols-2 gap-3">
-        {(['chase', 'defend'] as const).map((side) => (
+        {(['bat', 'bowl'] as const).map((side) => (
           <Panel key={side}>
-            <h3 className="font-bold capitalize">{side === 'chase' ? 'Chasing' : 'Defending'} cards</h3>
+            <h3 className="font-bold">{side === 'bat' ? 'Batting' : 'Bowling'} plans</h3>
             <ul className="mt-2 space-y-2 text-sm">
               {m.breakCalls.filter((b) => b.side === side).map((b) => (
                 <li key={b.code}>
-                  <b>{b.name}.</b> <span className="text-muted">{b.description}</span>
-                  {b.bias.some((x) => x !== 0) && <span className="block text-xs text-muted">Lean per over (+ attack, − defend): {b.bias.map((x) => (x > 0 ? `+${x}` : x)).join(', ')}</span>}
+                  <span className="flex items-center gap-2"><b>{b.name}</b> <PlanOvers def={b} /></span>
+                  <span className="text-muted">{b.description}</span>
+                  {b.weakness && <span className="block text-xs text-muted">Struggles against: {b.weakness}</span>}
                 </li>
               ))}
             </ul>
@@ -661,7 +668,7 @@ function BreakAndSuperOver({ m }: { m: EngineModel }) {
         ))}
       </div>
       <h3 className="font-bold pt-2">Conditions twist</h3>
-      <p className="text-sm text-muted">Revealed at the break and applied to the second innings (and any Super Over). Decided by the match seed.</p>
+      <p className="text-sm text-muted">Revealed at the break and applied to the second innings (and any Super Over). Decided by the match seed. The effects are deliberately small, about half a pitch type's, so they nudge the chase rather than swing it.</p>
       <div className="grid sm:grid-cols-2 gap-3">
         {m.conditions.map((c) => (
           <Panel key={c.code} className="!p-4 text-sm">
