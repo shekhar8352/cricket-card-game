@@ -147,6 +147,10 @@ type Lineup struct {
 	TossPref     string   `json:"tossPref"` // "" lets the captain decide
 	Tactics      Tactics  `json:"tactics"`  // fixed plan; empty lets the captain decide each over
 	CaptainID    string   `json:"captainId"`
+	// First-innings game plans: BatPlan if this side bats first, BowlPlan if
+	// it bowls first. Empty or "captain" leaves each over to the captain.
+	BatPlan  BreakCall `json:"batPlan,omitempty"`
+	BowlPlan BreakCall `json:"bowlPlan,omitempty"`
 	// Rivals: dismissals by this side's bowlers of opposing batters in the
 	// owner's history, keyed "bowlerPlayerID|batterPlayerID". Built per match.
 	Rivals map[string]int `json:"-"`
@@ -184,46 +188,46 @@ type Dismissal struct {
 }
 
 type BallEvent struct {
-	Innings         int      `json:"innings"`
-	Over            int      `json:"over"`
-	Ball            int      `json:"ball"`
-	Seq             int      `json:"seq"`
-	BowlerID        string   `json:"bowlerId"`
-	StrikerID       string   `json:"strikerId"`
-	NonStrikerID    string   `json:"nonStrikerId"`
-	Outcome         Outcome  `json:"outcome"`
-	Runs            int      `json:"runs"`
-	Legal           bool     `json:"legal"`
-	Extras          Extras   `json:"extras"`
-	Shot            Shot     `json:"shot"`
-	Chance          *Chance  `json:"chance,omitempty"`
+	Innings         int        `json:"innings"`
+	Over            int        `json:"over"`
+	Ball            int        `json:"ball"`
+	Seq             int        `json:"seq"`
+	BowlerID        string     `json:"bowlerId"`
+	StrikerID       string     `json:"strikerId"`
+	NonStrikerID    string     `json:"nonStrikerId"`
+	Outcome         Outcome    `json:"outcome"`
+	Runs            int        `json:"runs"`
+	Legal           bool       `json:"legal"`
+	Extras          Extras     `json:"extras"`
+	Shot            Shot       `json:"shot"`
+	Chance          *Chance    `json:"chance,omitempty"`
 	Dismissal       *Dismissal `json:"dismissal,omitempty"`
-	FieldingSave    bool     `json:"fieldingSave,omitempty"`
-	TraitsTriggered []string `json:"traitsTriggered,omitempty"`
-	Commentary      string   `json:"commentary"`
-	Approach        string   `json:"approach,omitempty"` // batting approach in force
-	Field           string   `json:"field,omitempty"`    // field plan in force
-	Pressure        int      `json:"pressure,omitempty"` // dot balls in a row before this ball
-	Matchup         string   `json:"matchup,omitempty"`  // e.g. "weak vs spin"
-	Counter         string   `json:"counter,omitempty"`  // strategy counter in force, e.g. "Holing out"
-	Powerplay       bool     `json:"powerplay,omitempty"`
-	FreeHit         bool     `json:"freeHit,omitempty"`
-	Masterstroke    string   `json:"masterstroke,omitempty"` // name of a masterstroke active this over
-	MasterstrokeBy  string   `json:"masterstrokeBy,omitempty"` // "bat" or "bowl"
-	Chemistry       int      `json:"chemistry,omitempty"` // link level 0-3 between the two batters
-	Rivalry         bool     `json:"rivalry,omitempty"`   // the bowler "has his number"
-	Score           int      `json:"score"`
-	Wickets         int      `json:"wickets"`
+	FieldingSave    bool       `json:"fieldingSave,omitempty"`
+	TraitsTriggered []string   `json:"traitsTriggered,omitempty"`
+	Commentary      string     `json:"commentary"`
+	Approach        string     `json:"approach,omitempty"` // batting approach in force
+	Field           string     `json:"field,omitempty"`    // field plan in force
+	Pressure        int        `json:"pressure,omitempty"` // dot balls in a row before this ball
+	Matchup         string     `json:"matchup,omitempty"`  // e.g. "weak vs spin"
+	Counter         string     `json:"counter,omitempty"`  // strategy counter in force, e.g. "Holing out"
+	Powerplay       bool       `json:"powerplay,omitempty"`
+	FreeHit         bool       `json:"freeHit,omitempty"`
+	Masterstroke    string     `json:"masterstroke,omitempty"`   // name of a masterstroke active this over
+	MasterstrokeBy  string     `json:"masterstrokeBy,omitempty"` // "bat" or "bowl"
+	Chemistry       int        `json:"chemistry,omitempty"`      // link level 0-3 between the two batters
+	Rivalry         bool       `json:"rivalry,omitempty"`        // the bowler "has his number"
+	Score           int        `json:"score"`
+	Wickets         int        `json:"wickets"`
 }
 
 type BatterScore struct {
-	CardID     string     `json:"cardId"`
-	Runs       int        `json:"runs"`
-	Balls      int        `json:"balls"`
-	Fours      int        `json:"fours"`
-	Sixes      int        `json:"sixes"`
-	Dismissal  *Dismissal `json:"dismissal,omitempty"`
-	NotOut     bool       `json:"notOut"`
+	CardID    string     `json:"cardId"`
+	Runs      int        `json:"runs"`
+	Balls     int        `json:"balls"`
+	Fours     int        `json:"fours"`
+	Sixes     int        `json:"sixes"`
+	Dismissal *Dismissal `json:"dismissal,omitempty"`
+	NotOut    bool       `json:"notOut"`
 }
 
 type BowlerScore struct {
@@ -269,7 +273,7 @@ type MatchResult struct {
 	POTM    string           `json:"playerOfMatch"`
 	Pitch   Pitch            `json:"pitch"`
 
-	Conditions Conditions       `json:"conditions,omitempty"` // second-innings twist
+	Conditions Conditions        `json:"conditions,omitempty"` // second-innings twist
 	BreakCalls map[string]string `json:"breakCalls,omitempty"` // side -> BreakCall code
-	SuperOver  *SuperOverResult `json:"superOver,omitempty"`
+	SuperOver  *SuperOverResult  `json:"superOver,omitempty"`
 }

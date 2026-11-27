@@ -120,10 +120,12 @@ var ApproachEffects = map[Approach]WeightDelta{
 }
 
 // FieldEffects: an attacking field brings catchers in (more wickets, but gaps
-// for boundaries); a defensive field guards the rope (singles flow, wickets dry up).
+// for boundaries); a defensive field guards the rope (singles flow, wickets dry
+// up). Measured over whole innings, no field is safe against every approach:
+// each one has a batting approach that scores about 50 off it (TestPlanBalance).
 var FieldEffects = map[FieldPlan]WeightDelta{
 	FieldAttack: {Dot: -1, One: -3, Four: 2, Six: 1, Wicket: 3},
-	FieldDefend: {One: 3, Two: 2, Four: -2, Six: -1, Wicket: -2},
+	FieldDefend: {One: 5, Two: 3, Four: -1, Six: -1, Wicket: -2},
 }
 
 // Counter is a bonus that applies only when a batting approach meets a field.
@@ -138,14 +140,14 @@ type Counter struct {
 // Counters make the plans a cycle with no single best choice:
 // attacking field > defensive batting > defensive field > attacking batting > attacking field.
 var Counters = []Counter{
-	{ApproachAttack, FieldDefend, "Holing out", WeightDelta{Four: -4, Six: -3, Wicket: 5},
+	{ApproachAttack, FieldDefend, "Holing out", WeightDelta{Four: -3, Six: -2, Wicket: 3},
 		"Slogging into a defensive field finds the sweepers on the rope."},
-	{ApproachAttack, FieldAttack, "Over the top", WeightDelta{Four: 3, Six: 2},
+	{ApproachAttack, FieldAttack, "Over the top", WeightDelta{Four: 1, Six: 1},
 		"With the field up, lofted shots clear the infield for boundaries."},
 	{ApproachDefend, FieldAttack, "Strangled", WeightDelta{Dot: 7, One: -5, Four: -1, Wicket: 4},
 		"Close catchers and no easy singles: a defensive batter gets stuck and nicks off."},
-	{ApproachDefend, FieldDefend, "Free singles", WeightDelta{Dot: -10, One: 14, Two: 10, Four: 2},
-		"With everyone back on the rope, the batter jogs ones and twos all day."},
+	{ApproachDefend, FieldDefend, "Free singles", WeightDelta{Dot: -14, One: 12, Two: 18, Four: 6, Wicket: -1},
+		"With everyone back on the rope, the batter jogs ones, runs hard twos and finds the gaps."},
 }
 
 func counterFor(a Approach, f FieldPlan) *Counter {
@@ -185,10 +187,10 @@ type PitchDef struct {
 }
 
 var Pitches = []PitchDef{
-	{PitchBalanced, "Balanced", "A fair surface with something for everyone.", "Pick your strongest seven.", 0, 0, 0, 0, 0, 47},
-	{PitchGreen, "Green seamer", "Grass on the pitch helps the ball move off the seam.", "Pick an extra pace bowler. Edges carry to the keeper.", 10, -6, 0, 0, 10, 45},
-	{PitchDusty, "Dusty turner", "Dry and cracked. It grips for spinners and gets worse as the match goes on.", "Pick spinners. Batting first avoids the worn 2nd-innings pitch.", -4, 9, 5, 0, 0, 46},
-	{PitchFlat, "Flat road", "Hard and true. The ball comes onto the bat.", "Back your hitters. Defensive fields matter more than wicket-taking.", -1, -1, 0, 5, 0, 51},
+	{PitchBalanced, "Balanced", "A fair surface with something for everyone.", "Pick your strongest seven.", 0, 0, 0, 0, 0, 45},
+	{PitchGreen, "Green seamer", "Grass on the pitch helps the ball move off the seam.", "Pick an extra pace bowler. Edges carry to the keeper.", 10, -6, 0, 0, 10, 41},
+	{PitchDusty, "Dusty turner", "Dry and cracked. It grips for spinners and gets worse as the match goes on.", "Pick spinners. Batting first avoids the worn 2nd-innings pitch.", -4, 9, 5, 0, 0, 45},
+	{PitchFlat, "Flat road", "Hard and true. The ball comes onto the bat.", "Back your hitters. Defensive fields matter more than wicket-taking.", -1, -1, 0, 5, 0, 53},
 }
 
 func PitchByCode(p Pitch) PitchDef {
@@ -240,7 +242,7 @@ var (
 // shift = SkillCurveScale * tanh(gap / SkillCurveWidth). It is close to
 // linear for small gaps and flattens for big ones, so tactics can bridge part
 // of a large ratings gap but never all of it.
-const (
-	SkillCurveScale = 14.0
-	SkillCurveWidth = 42.0
+var (
+	SkillCurveScale = 20.0
+	SkillCurveWidth = 30.0
 )
